@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/home/ec2-user/traders-view/traders-view.py", line 1049, in <module>
+    main()
+  File "/home/ec2-user/traders-view/traders-view.py", line 1038, in main
+    server = HTTPServer((HOST, PORT), DashboardHandler)
+  File "/usr/lib64/python3.9/socketserver.py", line 452, in __init__
+    self.server_bind()
+  File "/usr/lib64/python3.9/http/server.py", line 137, in server_bind
+    socketserver.TCPServer.server_bind(self)
+  File "/usr/lib64/python3.9/socketserver.py", line 466, in server_bind
+    self.socket.bind(self.server_address)
+OSError: [Errno 98] Address already in use

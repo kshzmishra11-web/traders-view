@@ -1,0 +1,357 @@
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 38654)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 46654)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 46672)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 46682)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 55642)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 55648)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 55664)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 55674)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 49180)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 991, in do_GET
+    self.wfile.write(payload)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 35424)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 991, in do_GET
+    self.wfile.write(payload)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 57910)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 991, in do_GET
+    self.wfile.write(payload)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 57912)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 416, in handle_one_request
+    self.send_error(
+  File "/usr/lib64/python3.9/http/server.py", line 488, in send_error
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 45454)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 991, in do_GET
+    self.wfile.write(payload)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 38696)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 38700)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 38714)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 38726)
+Traceback (most recent call last):
+  File "/usr/lib64/python3.9/socketserver.py", line 316, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 347, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib64/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib64/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/usr/lib64/python3.9/http/server.py", line 433, in handle
+    self.handle_one_request()
+  File "/usr/lib64/python3.9/http/server.py", line 421, in handle_one_request
+    method()
+  File "/home/ec2-user/traders-view/traders-view.py", line 969, in do_GET
+    self.wfile.write(body)
+  File "/usr/lib64/python3.9/socketserver.py", line 826, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------

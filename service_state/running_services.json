@@ -1,0 +1,21 @@
+﻿{
+    "started_at":  "2026-02-21T17:04:43",
+    "python_executable":  "C:\\Users\\kshzm\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+    "dca":  {
+                "pid":  22460,
+                "script":  "C:\\Users\\kshzm\\OneDrive\\Documents\\DCA-Plan\\risk_guard_live_tracker.py",
+                "stdout_log":  "C:\\Users\\kshzm\\OneDrive\\Documents\\Traders-View\\service_state\\dca_live_20260221_170443.out.log",
+                "stderr_log":  "C:\\Users\\kshzm\\OneDrive\\Documents\\Traders-View\\service_state\\dca_live_20260221_170443.err.log"
+            },
+    "market_alert":  {
+                         "pid":  39552,
+                         "script":  "C:\\Users\\kshzm\\OneDrive\\Documents\\Market-Alert-Bot\\market_index.py",
+                         "stdout_log":  "C:\\Users\\kshzm\\OneDrive\\Documents\\Traders-View\\service_state\\market_alert_20260221_170443.out.log",
+                         "stderr_log":  "C:\\Users\\kshzm\\OneDrive\\Documents\\Traders-View\\service_state\\market_alert_20260221_170443.err.log"
+                     },
+    "traders_view_tunnel":  {
+                                "pid":  21500,
+                                "launcher":  "C:\\Users\\kshzm\\OneDrive\\Desktop\\Start-TradersView-Tunnel.bat",
+                                "combined_log":  "C:\\Users\\kshzm\\OneDrive\\Documents\\Traders-View\\service_state\\traders_tunnel_20260221_170443.log"
+                            }
+}
