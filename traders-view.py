@@ -1,3 +1,22 @@
+from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import base64
+import binascii
+from datetime import datetime, timezone
+import hmac
+import json
+import os
+from pathlib import Path
+import threading
+import time
+from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+from html import escape
+
+from service_discovery import build_service_urls, discover_topic_services
+
+
 # --- Security Headers Helper ---
 def _set_security_headers(handler):
   handler.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none';")
@@ -6,21 +25,6 @@ def _set_security_headers(handler):
   handler.send_header("X-Content-Type-Options", "nosniff")
   handler.send_header("X-Frame-Options", "DENY")
   handler.send_header("Cross-Origin-Resource-Policy", "same-origin")
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import base64
-import binascii
-from datetime import datetime
-import hmac
-import json
-import os
-from pathlib import Path
-import threading
-from urllib.parse import quote, unquote, urlparse
-from urllib.error import URLError
-from urllib.request import Request, urlopen
-from html import escape
-
-from service_discovery import build_service_urls, discover_topic_services
 
 
 HOST = "127.0.0.1"
@@ -28,9 +32,23 @@ PORT = 8787
 HEALTH_TIMEOUT = 3
 ROOT = Path(__file__).resolve().parent
 
-COINGECKO_SIMPLE_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd"
+COINGECKO_SIMPLE_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,ripple,solana,binancecoin,cardano&vs_currencies=usd&include_24hr_change=true"
+FNG_API_URL = "https://api.alternative.me/fng/?limit=1"
 COINBASE_BTC_SPOT_URL = "https://api.coinbase.com/v2/prices/BTC-USD/spot"
 COINBASE_ETH_SPOT_URL = "https://api.coinbase.com/v2/prices/ETH-USD/spot"
+BINANCE_BTC_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
+BINANCE_ETH_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT"
+BINANCE_XRP_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT"
+BINANCE_SOL_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT"
+BINANCE_BNB_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT"
+BINANCE_ADA_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=ADAUSDT"
+BINANCE_XRP_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=XRPUSDT"
+BINANCE_SOL_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT"
+BINANCE_BNB_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT"
+BINANCE_ADA_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=ADAUSDT"
+BINANCE_DOGE_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=DOGEUSDT"
+BINANCE_AVAX_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=AVAXUSDT"
+BINANCE_LINK_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=LINKUSDT"
 FRANKFURTER_USD_SGD_URL = "https://api.frankfurter.app/latest?from=USD&to=SGD"
 OPEN_ER_USD_URL = "https://open.er-api.com/v6/latest/USD"
 STOOQ_CSV_URL_TEMPLATE = "https://stooq.com/q/l/?s={symbol}&i=d"
@@ -42,16 +60,70 @@ _market_cache_lock = threading.Lock()
 _market_last_good_metrics = {
   "silver_spot_usd_oz": None,
   "gold_spot_usd_oz": None,
+  "platinum_spot_usd_oz": None,
+  "palladium_spot_usd_oz": None,
   "btc_usd": None,
   "eth_usd": None,
+  "xrp_usd": None,
+  "sol_usd": None,
+  "bnb_usd": None,
+  "ada_usd": None,
+  "doge_usd": None,
+  "avax_usd": None,
+  "link_usd": None,
+  "btc_chg24": None,
+  "eth_chg24": None,
+  "xrp_chg24": None,
+  "sol_chg24": None,
+  "bnb_chg24": None,
+  "ada_chg24": None,
+  "doge_chg24": None,
+  "avax_chg24": None,
+  "link_chg24": None,
   "usd_sgd": None,
   "sp500": None,
+  "nasdaq": None,
+  "nikkei": None,
+  "ftse": None,
+  "dax": None,
+  "hangseng": None,
+  "vix": None,
+  "wti": None,
+  "dxy": None,
+  "dow": None,
+  "russell2000": None,
+  "tnx": None,
+  "fiveyr_yield": None,
+  "thirtyyr_yield": None,
+  "brent": None,
+  "eurusd": None,
+  "gbpusd": None,
+  "audusd": None,
+  "usdjpy": None,
+  "fear_greed": None,
 }
+_market_snapshot_cache_lock = threading.Lock()
+_market_snapshot_cache = {
+  "epoch": 0.0,
+  "payload": None,
+}
+MARKET_SNAPSHOT_TTL_SECONDS = max(
+  5,
+  int(os.environ.get("TRADERS_VIEW_MARKET_SNAPSHOT_TTL_SECONDS", "15").strip() or "15"),
+)
+NETWORK_TIMEOUT_SECONDS = max(
+  2.0,
+  float(os.environ.get("TRADERS_VIEW_NETWORK_TIMEOUT_SECONDS", "4.5").strip() or "4.5"),
+)
+TOPIC_PROXY_TIMEOUT_SECONDS = max(
+  3.0,
+  float(os.environ.get("TRADERS_VIEW_TOPIC_PROXY_TIMEOUT_SECONDS", "12").strip() or "12"),
+)
 
 
 AUTH_USERNAME = os.environ.get("TRADERS_VIEW_USER", "").strip()
 AUTH_PASSWORD = os.environ.get("TRADERS_VIEW_PASS", "").strip()
-AUTH_ENABLED = os.environ.get("TRADERS_VIEW_AUTH_ENABLED", "1").strip() != "0"
+AUTH_ENABLED = os.environ.get("TRADERS_VIEW_AUTH_ENABLED", "0").strip() != "0"
 
 if AUTH_ENABLED and (not AUTH_USERNAME or not AUTH_PASSWORD):
   raise RuntimeError(
@@ -73,13 +145,13 @@ def _safe_float(raw_value):
     return None
 
 
-def _fetch_json(url, timeout=10):
+def _fetch_json(url, timeout=NETWORK_TIMEOUT_SECONDS):
   request = Request(url, headers={"User-Agent": "TradersViewGateway/1.0"})
   with urlopen(request, timeout=timeout) as response:
     return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
-def _fetch_stooq_close(symbol, timeout=10):
+def _fetch_stooq_close(symbol, timeout=NETWORK_TIMEOUT_SECONDS):
   encoded_symbol = quote(symbol, safe="")
   url = STOOQ_CSV_URL_TEMPLATE.format(symbol=encoded_symbol)
   request = Request(url, headers={"User-Agent": "TradersViewGateway/1.0"})
@@ -96,7 +168,7 @@ def _fetch_stooq_close(symbol, timeout=10):
   return _safe_float(cols[6])
 
 
-def _fetch_yahoo_last_close(symbol, timeout=10):
+def _fetch_yahoo_last_close(symbol, timeout=NETWORK_TIMEOUT_SECONDS):
   encoded_symbol = quote(symbol, safe="")
   url = YAHOO_CHART_URL_TEMPLATE.format(symbol=encoded_symbol)
   payload = _fetch_json(url, timeout=timeout)
@@ -130,7 +202,7 @@ def _is_reasonable_metal_price(symbol, value):
   return False
 
 
-def _fetch_gold_api_spot(symbol, timeout=10):
+def _fetch_gold_api_spot(symbol, timeout=NETWORK_TIMEOUT_SECONDS):
   url = GOLD_API_URL_TEMPLATE.format(symbol=quote(symbol, safe=""))
   payload = _fetch_json(url, timeout=timeout)
   price = _safe_float((payload or {}).get("price"))
@@ -195,13 +267,207 @@ def _fetch_usd_sgd_rate():
   return None, None
 
 
+def _fetch_fear_greed():
+  try:
+    payload = _fetch_json(FNG_API_URL)
+    data = payload.get("data")
+    if isinstance(data, list) and data:
+      value = data[0].get("value")
+      if value is not None:
+        return int(value)
+  except Exception:
+    pass
+  return None
+
+
+def _fetch_dow():
+  try:
+    v = _fetch_yahoo_last_close("^DJI")
+    if v is None:
+      v = _fetch_stooq_close("^dji")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_tnx():
+  try:
+    return _fetch_yahoo_last_close("^TNX")
+  except Exception:
+    return None
+
+
+def _fetch_brent():
+  try:
+    v = _fetch_yahoo_last_close("BZ=F")
+    if v is None:
+      v = _fetch_stooq_close("lcousd")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_eurusd():
+  try:
+    v = _fetch_yahoo_last_close("EURUSD=X")
+    if v is None:
+      v = _fetch_stooq_close("eurusd")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_usdjpy():
+  try:
+    v = _fetch_yahoo_last_close("JPY=X")
+    if v is None:
+      v = _fetch_stooq_close("usdjpy")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_russell2000():
+  try:
+    v = _fetch_yahoo_last_close("^RUT")
+    if v is None:
+      v = _fetch_stooq_close("^rut")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_platinum():
+  try:
+    v = _fetch_stooq_close("xptusd")
+    if v is None:
+      v = _fetch_yahoo_last_close("PL=F")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_palladium():
+  try:
+    v = _fetch_stooq_close("xpdusd")
+    if v is None:
+      v = _fetch_yahoo_last_close("PA=F")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_binance_24h_both(url):
+  """Fetch (lastPrice, priceChangePercent) from a Binance 24hr ticker in one call."""
+  try:
+    payload = _fetch_json(url)
+    price = _safe_float((payload or {}).get("lastPrice"))
+    chg = _safe_float((payload or {}).get("priceChangePercent"))
+    return price, chg
+  except Exception:
+    return None, None
+
+
+def _fetch_doge():
+  return _fetch_binance_24h_both(BINANCE_DOGE_24H_URL)
+
+
+def _fetch_avax():
+  return _fetch_binance_24h_both(BINANCE_AVAX_24H_URL)
+
+
+def _fetch_link():
+  return _fetch_binance_24h_both(BINANCE_LINK_24H_URL)
+
+
+def _fetch_global_indices():
+  nikkei = ftse = dax = hangseng = None
+  try:
+    nikkei = _fetch_yahoo_last_close("^N225")
+  except Exception:
+    pass
+  try:
+    ftse = _fetch_yahoo_last_close("^FTSE")
+  except Exception:
+    pass
+  try:
+    dax = _fetch_yahoo_last_close("^GDAXI")
+  except Exception:
+    pass
+  try:
+    hangseng = _fetch_yahoo_last_close("^HSI")
+  except Exception:
+    pass
+  return nikkei, ftse, dax, hangseng
+
+
+def _fetch_fiveyr_yield():
+  try:
+    return _fetch_yahoo_last_close("^FVX")
+  except Exception:
+    return None
+
+
+def _fetch_thirtyyr_yield():
+  try:
+    return _fetch_yahoo_last_close("^TYX")
+  except Exception:
+    return None
+
+
+def _fetch_gbpusd():
+  try:
+    v = _fetch_yahoo_last_close("GBPUSD=X")
+    if v is None:
+      v = _fetch_stooq_close("gbpusd")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_audusd():
+  try:
+    v = _fetch_yahoo_last_close("AUDUSD=X")
+    if v is None:
+      v = _fetch_stooq_close("audusd")
+    return v
+  except Exception:
+    return None
+
+
+def _fetch_binance_usdt_price(url):
+  try:
+    payload = _fetch_json(url)
+    return _safe_float((payload or {}).get("price"))
+  except Exception:
+    return None
+
+
+def _fetch_binance_24h_change(url):
+  try:
+    payload = _fetch_json(url)
+    return _safe_float((payload or {}).get("priceChangePercent"))
+  except Exception:
+    return None
+
+
 def _fetch_crypto_prices():
   try:
     crypto = _fetch_json(COINGECKO_SIMPLE_PRICE_URL)
     btc = _safe_float(((crypto or {}).get("bitcoin") or {}).get("usd"))
     eth = _safe_float(((crypto or {}).get("ethereum") or {}).get("usd"))
+    xrp = _safe_float(((crypto or {}).get("ripple") or {}).get("usd"))
+    sol = _safe_float(((crypto or {}).get("solana") or {}).get("usd"))
+    bnb = _safe_float(((crypto or {}).get("binancecoin") or {}).get("usd"))
+    ada = _safe_float(((crypto or {}).get("cardano") or {}).get("usd"))
+    btc_chg24 = _safe_float(((crypto or {}).get("bitcoin") or {}).get("usd_24h_change"))
+    eth_chg24 = _safe_float(((crypto or {}).get("ethereum") or {}).get("usd_24h_change"))
+    xrp_chg24 = _safe_float(((crypto or {}).get("ripple") or {}).get("usd_24h_change"))
+    sol_chg24 = _safe_float(((crypto or {}).get("solana") or {}).get("usd_24h_change"))
+    bnb_chg24 = _safe_float(((crypto or {}).get("binancecoin") or {}).get("usd_24h_change"))
+    ada_chg24 = _safe_float(((crypto or {}).get("cardano") or {}).get("usd_24h_change"))
     if btc is not None and eth is not None:
-      return btc, eth, "CoinGecko"
+      return btc, eth, xrp, sol, bnb, ada, btc_chg24, eth_chg24, xrp_chg24, sol_chg24, bnb_chg24, ada_chg24, "CoinGecko"
   except Exception:
     pass
 
@@ -210,70 +476,239 @@ def _fetch_crypto_prices():
     eth_payload = _fetch_json(COINBASE_ETH_SPOT_URL)
     btc = _safe_float(((btc_payload or {}).get("data") or {}).get("amount"))
     eth = _safe_float(((eth_payload or {}).get("data") or {}).get("amount"))
+    xrp = _fetch_binance_usdt_price(BINANCE_XRP_USDT_URL)
+    sol = _fetch_binance_usdt_price(BINANCE_SOL_USDT_URL)
+    bnb = _fetch_binance_usdt_price(BINANCE_BNB_USDT_URL)
+    ada = _fetch_binance_usdt_price(BINANCE_ADA_USDT_URL)
+    btc_chg24 = _fetch_binance_24h_change(BINANCE_BTC_24H_URL)
+    eth_chg24 = _fetch_binance_24h_change(BINANCE_ETH_24H_URL)
+    xrp_chg24 = _fetch_binance_24h_change(BINANCE_XRP_24H_URL)
+    sol_chg24 = _fetch_binance_24h_change(BINANCE_SOL_24H_URL)
+    bnb_chg24 = _fetch_binance_24h_change(BINANCE_BNB_24H_URL)
+    ada_chg24 = _fetch_binance_24h_change(BINANCE_ADA_24H_URL)
     if btc is not None and eth is not None:
-      return btc, eth, "Coinbase"
+      return btc, eth, xrp, sol, bnb, ada, btc_chg24, eth_chg24, xrp_chg24, sol_chg24, bnb_chg24, ada_chg24, "Coinbase+Binance"
   except Exception:
     pass
 
   try:
     btc = _fetch_stooq_close("btcusd")
     eth = _fetch_stooq_close("ethusd")
+    xrp = _fetch_binance_usdt_price(BINANCE_XRP_USDT_URL)
+    sol = _fetch_binance_usdt_price(BINANCE_SOL_USDT_URL)
+    bnb = _fetch_binance_usdt_price(BINANCE_BNB_USDT_URL)
+    ada = _fetch_binance_usdt_price(BINANCE_ADA_USDT_URL)
+    btc_chg24 = _fetch_binance_24h_change(BINANCE_BTC_24H_URL)
+    eth_chg24 = _fetch_binance_24h_change(BINANCE_ETH_24H_URL)
+    xrp_chg24 = _fetch_binance_24h_change(BINANCE_XRP_24H_URL)
+    sol_chg24 = _fetch_binance_24h_change(BINANCE_SOL_24H_URL)
+    bnb_chg24 = _fetch_binance_24h_change(BINANCE_BNB_24H_URL)
+    ada_chg24 = _fetch_binance_24h_change(BINANCE_ADA_24H_URL)
     if btc is not None and eth is not None:
-      return btc, eth, "Stooq"
+      return btc, eth, xrp, sol, bnb, ada, btc_chg24, eth_chg24, xrp_chg24, sol_chg24, bnb_chg24, ada_chg24, "Stooq+Binance"
   except Exception:
     pass
 
-  return None, None, None
+  return None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
-def build_market_snapshot():
+def _fetch_indices_macro_snapshot():
+  try:
+    sp500_value = _fetch_yahoo_last_close("^GSPC")
+    nasdaq_value = _fetch_yahoo_last_close("^IXIC")
+    vix_value = _fetch_yahoo_last_close("^VIX")
+    wti_value = _fetch_yahoo_last_close("CL=F")
+    dxy_value = _fetch_yahoo_last_close("DX-Y.NYB")
+    if dxy_value is None:
+      dxy_value = _fetch_yahoo_last_close("DX=F")
+    source = "Yahoo Finance"
+
+    if nasdaq_value is None:
+      nasdaq_value = _fetch_stooq_close("^ndq")
+      if nasdaq_value is not None:
+        source = "Stooq"
+    if vix_value is None:
+      vix_value = _fetch_stooq_close("^vix")
+      if vix_value is not None:
+        source = "Stooq"
+    if wti_value is None:
+      wti_value = _fetch_stooq_close("cl.f")
+      if wti_value is not None:
+        source = "Stooq"
+    if dxy_value is None:
+      dxy_value = _fetch_stooq_close("usdx")
+
+    if sp500_value is None:
+      sp500_value = _fetch_stooq_close("^spx")
+      if sp500_value is not None:
+        source = "Stooq"
+    return sp500_value, nasdaq_value, vix_value, wti_value, dxy_value, source
+  except Exception as exc:
+    print("[ERROR] Index/macro fetch failed:", exc, flush=True)
+    return None, None, None, None, None, None
+
+
+def _build_market_snapshot_uncached():
   snapshot = {
     "updated_at": None,
     "metrics": {
       "silver_spot_usd_oz": None,
       "gold_spot_usd_oz": None,
+      "platinum_spot_usd_oz": None,
+      "palladium_spot_usd_oz": None,
       "btc_usd": None,
       "eth_usd": None,
+      "xrp_usd": None,
+      "sol_usd": None,
+      "bnb_usd": None,
+      "ada_usd": None,
+      "doge_usd": None,
+      "avax_usd": None,
+      "link_usd": None,
+      "btc_chg24": None,
+      "eth_chg24": None,
+      "xrp_chg24": None,
+      "sol_chg24": None,
+      "bnb_chg24": None,
+      "ada_chg24": None,
+      "doge_chg24": None,
+      "avax_chg24": None,
+      "link_chg24": None,
       "usd_sgd": None,
       "sp500": None,
+      "nasdaq": None,
+      "nikkei": None,
+      "ftse": None,
+      "dax": None,
+      "hangseng": None,
+      "vix": None,
+      "wti": None,
+      "dxy": None,
+      "dow": None,
+      "russell2000": None,
+      "tnx": None,
+      "fiveyr_yield": None,
+      "thirtyyr_yield": None,
+      "brent": None,
+      "eurusd": None,
+      "gbpusd": None,
+      "audusd": None,
+      "usdjpy": None,
+      "fear_greed": None,
     },
     "sources": {
       "metals": "Stooq",
       "crypto": "CoinGecko",
       "fx": "Frankfurter",
       "indices": "Stooq",
+      "fear_greed": "Alternative.me",
     },
   }
 
-  gold_value, silver_value, metals_source = _fetch_metals_prices()
+  with ThreadPoolExecutor(max_workers=22) as pool:
+    futures = {
+      "metals": pool.submit(_fetch_metals_prices),
+      "indices_macro": pool.submit(_fetch_indices_macro_snapshot),
+      "crypto": pool.submit(_fetch_crypto_prices),
+      "fx": pool.submit(_fetch_usd_sgd_rate),
+      "fng": pool.submit(_fetch_fear_greed),
+      "dow": pool.submit(_fetch_dow),
+      "russell2000": pool.submit(_fetch_russell2000),
+      "tnx": pool.submit(_fetch_tnx),
+      "brent": pool.submit(_fetch_brent),
+      "eurusd": pool.submit(_fetch_eurusd),
+      "usdjpy": pool.submit(_fetch_usdjpy),
+      "platinum": pool.submit(_fetch_platinum),
+      "palladium": pool.submit(_fetch_palladium),
+      "doge": pool.submit(_fetch_doge),
+      "avax": pool.submit(_fetch_avax),
+      "link": pool.submit(_fetch_link),
+      "global_indices": pool.submit(_fetch_global_indices),
+      "fiveyr_yield": pool.submit(_fetch_fiveyr_yield),
+      "thirtyyr_yield": pool.submit(_fetch_thirtyyr_yield),
+      "gbpusd": pool.submit(_fetch_gbpusd),
+      "audusd": pool.submit(_fetch_audusd),
+    }
+
+    gold_value, silver_value, metals_source = futures["metals"].result()
+    sp500_value, nasdaq_value, vix_value, wti_value, dxy_value, indices_source = futures["indices_macro"].result()
+    (
+      btc_value,
+      eth_value,
+      xrp_value,
+      sol_value,
+      bnb_value,
+      ada_value,
+      btc_chg24,
+      eth_chg24,
+      xrp_chg24,
+      sol_chg24,
+      bnb_chg24,
+      ada_chg24,
+      crypto_source,
+    ) = futures["crypto"].result()
+    usd_sgd_value, usd_sgd_source = futures["fx"].result()
+    fear_greed_value = futures["fng"].result()
+
   snapshot["metrics"]["gold_spot_usd_oz"] = gold_value
   snapshot["metrics"]["silver_spot_usd_oz"] = silver_value
+  snapshot["metrics"]["platinum_spot_usd_oz"] = futures["platinum"].result()
+  snapshot["metrics"]["palladium_spot_usd_oz"] = futures["palladium"].result()
   if metals_source:
     snapshot["sources"]["metals"] = metals_source
 
-  try:
-    # Use Yahoo Finance as primary source for S&P 500
-    sp500_value = _fetch_yahoo_last_close("^GSPC")
-    snapshot["sources"]["indices"] = "Yahoo Finance"
-    if sp500_value is None:
-      # Fallback to Stooq if Yahoo fails
-      sp500_value = _fetch_stooq_close("^spx")
-      if sp500_value is not None:
-        snapshot["sources"]["indices"] = "Stooq"
-    snapshot["metrics"]["sp500"] = sp500_value
-  except Exception as e:
-    print("[ERROR] S&P 500 fetch failed:", e, flush=True)
+  snapshot["metrics"]["sp500"] = sp500_value
+  snapshot["metrics"]["nasdaq"] = nasdaq_value
+  snapshot["metrics"]["vix"] = vix_value
+  snapshot["metrics"]["wti"] = wti_value
+  snapshot["metrics"]["dxy"] = dxy_value
+  if indices_source:
+    snapshot["sources"]["indices"] = indices_source
 
-  btc_value, eth_value, crypto_source = _fetch_crypto_prices()
   snapshot["metrics"]["btc_usd"] = btc_value
   snapshot["metrics"]["eth_usd"] = eth_value
+  snapshot["metrics"]["xrp_usd"] = xrp_value
+  snapshot["metrics"]["sol_usd"] = sol_value
+  snapshot["metrics"]["bnb_usd"] = bnb_value
+  snapshot["metrics"]["ada_usd"] = ada_value
+  snapshot["metrics"]["btc_chg24"] = btc_chg24
+  snapshot["metrics"]["eth_chg24"] = eth_chg24
+  snapshot["metrics"]["xrp_chg24"] = xrp_chg24
+  snapshot["metrics"]["sol_chg24"] = sol_chg24
+  snapshot["metrics"]["bnb_chg24"] = bnb_chg24
+  snapshot["metrics"]["ada_chg24"] = ada_chg24
   if crypto_source:
     snapshot["sources"]["crypto"] = crypto_source
 
-  usd_sgd_value, usd_sgd_source = _fetch_usd_sgd_rate()
   snapshot["metrics"]["usd_sgd"] = usd_sgd_value
   if usd_sgd_source:
     snapshot["sources"]["fx"] = usd_sgd_source
+
+  snapshot["metrics"]["fear_greed"] = fear_greed_value
+  snapshot["metrics"]["dow"] = futures["dow"].result()
+  snapshot["metrics"]["russell2000"] = futures["russell2000"].result()
+  snapshot["metrics"]["tnx"] = futures["tnx"].result()
+  snapshot["metrics"]["brent"] = futures["brent"].result()
+  snapshot["metrics"]["eurusd"] = futures["eurusd"].result()
+  snapshot["metrics"]["usdjpy"] = futures["usdjpy"].result()
+  doge_v, doge_c = futures["doge"].result()
+  avax_v, avax_c = futures["avax"].result()
+  link_v, link_c = futures["link"].result()
+  snapshot["metrics"]["doge_usd"] = doge_v
+  snapshot["metrics"]["doge_chg24"] = doge_c
+  snapshot["metrics"]["avax_usd"] = avax_v
+  snapshot["metrics"]["avax_chg24"] = avax_c
+  snapshot["metrics"]["link_usd"] = link_v
+  snapshot["metrics"]["link_chg24"] = link_c
+  nikkei_v, ftse_v, dax_v, hangseng_v = futures["global_indices"].result()
+  snapshot["metrics"]["nikkei"] = nikkei_v
+  snapshot["metrics"]["ftse"] = ftse_v
+  snapshot["metrics"]["dax"] = dax_v
+  snapshot["metrics"]["hangseng"] = hangseng_v
+  snapshot["metrics"]["fiveyr_yield"] = futures["fiveyr_yield"].result()
+  snapshot["metrics"]["thirtyyr_yield"] = futures["thirtyyr_yield"].result()
+  snapshot["metrics"]["gbpusd"] = futures["gbpusd"].result()
+  snapshot["metrics"]["audusd"] = futures["audusd"].result()
 
   with _market_cache_lock:
     for metric_key, metric_value in snapshot["metrics"].items():
@@ -282,8 +717,27 @@ def build_market_snapshot():
       elif metric_value is not None:
         _market_last_good_metrics[metric_key] = metric_value
 
-  snapshot["updated_at"] = datetime.utcnow().isoformat() + "Z"
+  snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
   return snapshot
+
+
+def build_market_snapshot(force_refresh=False):
+  now = time.time()
+  with _market_snapshot_cache_lock:
+    cached_payload = _market_snapshot_cache["payload"]
+    cached_epoch = _market_snapshot_cache["epoch"]
+    if (
+      not force_refresh
+      and cached_payload is not None
+      and (now - cached_epoch) < MARKET_SNAPSHOT_TTL_SECONDS
+    ):
+      return cached_payload
+
+  payload = _build_market_snapshot_uncached()
+  with _market_snapshot_cache_lock:
+    _market_snapshot_cache["payload"] = payload
+    _market_snapshot_cache["epoch"] = time.time()
+  return payload
 
 
 def render_page():
@@ -294,11 +748,6 @@ def render_page():
     for section in section_names
   }
   services_json = json.dumps(service_endpoints)
-
-  nav = "".join(
-    f"<a href='#{section_slug(name)}'>{name}</a>"
-    for name in section_names
-  )
 
   section_shells = "".join(
     (
@@ -329,35 +778,110 @@ def render_page():
       --shadow: 0 12px 30px rgba(17, 30, 62, 0.1);
     }}
     * {{ box-sizing: border-box; }}
-    body {{ margin: 0; background: radial-gradient(circle at top right, #e6edff 0, #f3f5fa 42%, #f3f5fa 100%); color: var(--text); font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }}
-    .shell {{ max-width: 1260px; margin: 0 auto; padding: 18px 20px 26px; }}
-    .header {{ background: linear-gradient(145deg, #0b1632, #142653); color: #fff; border-radius: 16px; padding: 16px 20px; box-shadow: var(--shadow); }}
+    html {{ scroll-behavior: smooth; }}
+    body {{
+      margin: 0;
+      background: radial-gradient(circle at top right, #e6edff 0, #f3f5fa 42%, #f3f5fa 100%);
+      color: var(--text);
+      font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+    }}
+    .shell {{
+      width: min(1260px, 100%);
+      margin: 0 auto;
+      padding: 18px 20px 26px;
+    }}
+    .header {{
+      background: linear-gradient(145deg, #0b1632, #142653);
+      color: #fff;
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: var(--shadow);
+    }}
     .header-top {{ display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }}
-    .brand-title {{ font-size: 25px; font-weight: 820; letter-spacing: -0.35px; }}
+    .brand-title {{ font-size: 30px; font-weight: 820; letter-spacing: -0.35px; }}
     .brand-sub {{ font-size: 12px; color: #bfcbf5; letter-spacing: 0.22px; text-transform: uppercase; }}
     .refresh {{ border: 1px solid rgba(255,255,255,0.34); background: rgba(255,255,255,0.08); color: #fff; border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }}
     .refresh:hover {{ background: rgba(255,255,255,0.2); }}
     .refresh:disabled {{ opacity: 0.65; cursor: not-allowed; }}
-    .market-strip {{ margin-top: 12px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }}
-    .market-tile {{ background: rgba(0,0,0,0.24); border: 1px solid rgba(210,224,255,0.24); border-radius: 10px; padding: 7px 8px; }}
-    .market-label {{ font-size: 10px; letter-spacing: 0.35px; text-transform: uppercase; color: #c8d5ff; font-weight: 700; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-    .market-value {{ font-size: 16px; font-weight: 800; letter-spacing: -0.2px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-    .market-value.market-up {{ color: #8cffb9; }}
-    .market-value.market-down {{ color: #ff9fb0; }}
-    .market-value.market-flat {{ color: #d8e2ff; }}
-    .nav {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }}
-    .nav a {{ text-decoration: none; font-size: 11px; letter-spacing: 0.36px; text-transform: uppercase; font-weight: 760; color: #d9e2ff; padding: 6px 11px; border: 1px solid rgba(217,226,255,0.34); border-radius: 999px; }}
-    .nav a:hover {{ background: rgba(255,255,255,0.16); color: #fff; }}
-    .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin: 14px 0 20px; }}
+    .market-groups {{ margin-top: 12px; display: grid; gap: 10px; }}
+    .market-group {{ display: grid; gap: 6px; }}
+    .market-group-label {{
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.35px;
+      text-transform: uppercase;
+      color: #f0d060;
+      padding-left: 2px;
+      text-decoration: none;
+      display: inline-block;
+    }}
+    .market-group-label:hover {{ color: #fff; text-decoration: underline; }}
+    .market-strip {{
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding-bottom: 2px;
+      scrollbar-gutter: stable;
+    }}
+    .market-strip::-webkit-scrollbar {{ height: 8px; }}
+    .market-strip::-webkit-scrollbar-track {{ background: rgba(255,255,255,0.08); border-radius: 999px; }}
+    .market-strip::-webkit-scrollbar-thumb {{ background: rgba(207,221,255,0.42); border-radius: 999px; }}
+    .market-strip::-webkit-scrollbar-thumb:hover {{ background: rgba(227,236,255,0.58); }}
+    .market-tile {{
+      background: rgba(0,0,0,0.24);
+      border: 1px solid rgba(210,224,255,0.24);
+      border-radius: 10px;
+      padding: 7px 8px;
+      min-width: 165px;
+      flex: 0 0 165px;
+    }}
+    .market-label {{ font-size: 10px; letter-spacing: 0.2px; text-transform: uppercase; color: #c8d5ff; font-weight: 700; margin-bottom: 2px; white-space: normal; line-height: 1.15; min-height: 22px; }}
+    .market-value {{ font-size: 14px; font-weight: 800; letter-spacing: -0.2px; color: #ffffff; overflow: hidden; }}
+    .market-value.market-up .mv-price {{ color: #8cffb9; }}
+    .market-value.market-down .mv-price {{ color: #ff9fb0; }}
+    .market-value.market-flat .mv-price {{ color: #d8e2ff; }}
+    .market-value.market-fng-extreme-fear .mv-price {{ color: #ff7f96; }}
+    .market-value.market-fng-fear .mv-price {{ color: #ffb07a; }}
+    .market-value.market-fng-neutral .mv-price {{ color: #ffe8a3; }}
+    .market-value.market-fng-greed .mv-price {{ color: #9bffd0; }}
+    .market-value.market-fng-extreme-greed .mv-price {{ color: #5effa3; }}
+    .mv-price {{ display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+    .mv-chg {{ display: block; font-size: 11px; font-weight: 700; margin-top: 3px; white-space: nowrap; }}
+    .mv-chg-up {{ color: #8cffb9; }}
+    .mv-chg-down {{ color: #ff9fb0; }}
+    .mv-chg-flat {{ color: #d8e2ff; }}
+    .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin: 12px 0 14px; }}
     .stat {{ background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; box-shadow: 0 6px 16px rgba(13, 26, 60, 0.04); }}
     .stat-label {{ margin: 0 0 4px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }}
     .stat-value {{ margin: 0; font-size: 30px; font-weight: 820; letter-spacing: -0.75px; color: var(--text); }}
-    .section-block {{ margin-bottom: 20px; }}
+    .section-block {{ margin-bottom: 14px; }}
     .section-head {{ display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 9px; border-bottom: 1px solid #dbe3f1; padding-bottom: 8px; }}
     .section-head h2 {{ margin: 0; font-size: 25px; letter-spacing: -0.55px; font-weight: 820; }}
     .section-head span {{ font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.35px; font-weight: 700; }}
-    .card-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }}
-    .card {{ background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 15px 12px; box-shadow: 0 10px 24px rgba(16, 30, 66, 0.06); transition: transform 140ms ease, box-shadow 140ms ease; }}
+    .card-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: 10px;
+    }}
+    .card {{
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 13px 10px;
+      box-shadow: 0 10px 24px rgba(16, 30, 66, 0.06);
+      transition: transform 140ms ease, box-shadow 140ms ease;
+      max-height: 360px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }}
+    .card::-webkit-scrollbar {{ width: 8px; }}
+    .card::-webkit-scrollbar-track {{ background: #edf2fb; border-radius: 999px; }}
+    .card::-webkit-scrollbar-thumb {{ background: #c0cde8; border-radius: 999px; }}
+    .card::-webkit-scrollbar-thumb:hover {{ background: #a9b9dd; }}
     .card:hover {{ transform: translateY(-2px); box-shadow: 0 14px 26px rgba(16, 30, 66, 0.1); }}
     .card-head {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }}
     .card-head-right {{ display: flex; align-items: center; gap: 8px; }}
@@ -371,14 +895,31 @@ def render_page():
     .card-refresh:hover {{ background: #edf2ff; }}
     .card-refresh:disabled {{ opacity: 0.6; cursor: not-allowed; }}
     .headline-list {{ list-style: none; margin: 0; padding: 0; }}
-    .headline-list li {{ padding: 8px 0; border-top: 1px solid #edf1fa; }}
+    .headline-list li {{ padding: 6px 0; border-top: 1px solid #edf1fa; }}
     .headline-list li:first-child {{ border-top: 0; padding-top: 2px; }}
     .headline-list a {{ text-decoration: none; color: #1a2442; font-size: 14px; line-height: 1.35; font-weight: 550; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }}
     .headline-list a:hover {{ color: var(--accent); }}
+    .headline-meta {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; flex-wrap: wrap; }}
+    .headline-time {{ color: #6e7b99; font-size: 11px; font-weight: 600; }}
+    .impact-wrap {{ display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }}
+    .impact-chip {{ display: inline-flex; align-items: center; gap: 3px; font-size: 10px; letter-spacing: 0.2px; border-radius: 999px; padding: 2px 6px; font-weight: 700; border: 1px solid transparent; }}
+    .impact-chip.impact-up {{ background: #e8fbef; color: #19633c; border-color: #b7e7c9; }}
+    .impact-chip.impact-down {{ background: #ffedf1; color: #8d1e3c; border-color: #f7c1ce; }}
     .placeholder, .service-error {{ display: grid; place-items: center; min-height: 120px; color: var(--muted); }}
     .service-error strong {{ color: #a11; }}
-    @media (max-width: 1200px) {{ .market-strip {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }} }}
-    @media (max-width: 980px) {{ .stats {{ grid-template-columns: 1fr; }} .card-grid {{ grid-template-columns: 1fr; }} .section-head h2 {{ font-size: 23px; }} .market-strip {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
+    @media (max-width: 1200px) {{
+      .card-grid {{ grid-template-columns: repeat(2, minmax(0,1fr)); }}
+      .market-tile {{ min-width: 155px; flex-basis: 155px; }}
+    }}
+    @media (max-width: 980px) {{
+      .stats {{ grid-template-columns: 1fr; }}
+      .card-grid {{ grid-template-columns: 1fr; }}
+      .card {{ max-height: none; overflow: visible; }}
+      .section-head h2 {{ font-size: 23px; }}
+      .brand-title {{ font-size: 25px; }}
+      .market-group-label {{ padding-left: 2px; }}
+      .market-tile {{ min-width: 145px; flex-basis: 145px; }}
+    }}
   </style>
 </head>
 <body>
@@ -391,15 +932,62 @@ def render_page():
         </div>
         <button id='refresh-btn' class='refresh' type='button'>Refresh</button>
       </div>
-      <div id='market-strip' class='market-strip'>
-        <div class='market-tile'><div class='market-label'>Silver Spot Price (USD/oz)</div><div id='mk-silver' class='market-value'>--</div></div>
-        <div class='market-tile'><div class='market-label'>Gold Spot Price (USD/oz)</div><div id='mk-gold' class='market-value'>--</div></div>
-        <div class='market-tile'><div class='market-label'>BTC/USD</div><div id='mk-btc' class='market-value'>--</div></div>
-        <div class='market-tile'><div class='market-label'>ETH/USD</div><div id='mk-eth' class='market-value'>--</div></div>
-        <div class='market-tile'><div class='market-label'>USD/SGD Rate</div><div id='mk-usdsgd' class='market-value'>--</div></div>
-        <div class='market-tile'><div class='market-label'>S&amp;P 500 Index</div><div id='mk-sp500' class='market-value'>--</div></div>
+      <div class='market-groups'>
+        <div class='market-group'>
+          <a class='market-group-label' href='#metals'>Metals</a>
+          <div class='market-strip market-strip-metals'>
+            <div class='market-tile'><div class='market-label'>Gold Spot (USD/oz)</div><div id='mk-gold' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Silver Spot (USD/oz)</div><div id='mk-silver' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Platinum Spot (USD/oz)</div><div id='mk-platinum' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Palladium Spot (USD/oz)</div><div id='mk-palladium' class='market-value'>--</div></div>
+          </div>
+        </div>
+        <div class='market-group'>
+          <a class='market-group-label' href='#crypto'>Crypto</a>
+          <div class='market-strip market-strip-crypto'>
+            <div class='market-tile'><div class='market-label'>Fear &amp; Greed Index</div><div id='mk-fng' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>BTC/USD</div><div id='mk-btc' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>ETH/USD</div><div id='mk-eth' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>XRP/USD</div><div id='mk-xrp' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>SOL/USD</div><div id='mk-sol' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>BNB/USD</div><div id='mk-bnb' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>ADA/USD</div><div id='mk-ada' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>DOGE/USD</div><div id='mk-doge' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>AVAX/USD</div><div id='mk-avax' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>LINK/USD</div><div id='mk-link' class='market-value'>--</div></div>
+          </div>
+        </div>
+        <div class='market-group'>
+          <a class='market-group-label' href='#financial'>Financial</a>
+          <div class='market-strip market-strip-markets'>
+            <div class='market-tile'><div class='market-label'>S&amp;P 500</div><div id='mk-sp500' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Dow Jones</div><div id='mk-dow' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>NASDAQ</div><div id='mk-nasdaq' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Russell 2000</div><div id='mk-russell2000' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Nikkei 225</div><div id='mk-nikkei' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>FTSE 100</div><div id='mk-ftse' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>DAX</div><div id='mk-dax' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Hang Seng</div><div id='mk-hangseng' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>VIX</div><div id='mk-vix' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>US 10Y Yield (%)</div><div id='mk-tnx' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>US 5Y Yield (%)</div><div id='mk-fiveyr' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>US 30Y Yield (%)</div><div id='mk-thirtyyr' class='market-value'>--</div></div>
+          </div>
+        </div>
+        <div class='market-group'>
+          <a class='market-group-label' href='#geopolitical'>Geopolitical</a>
+          <div class='market-strip market-strip-macro'>
+            <div class='market-tile'><div class='market-label'>WTI Crude</div><div id='mk-wti' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>Brent Crude</div><div id='mk-brent' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>EUR/USD</div><div id='mk-eurusd' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>GBP/USD</div><div id='mk-gbpusd' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>AUD/USD</div><div id='mk-audusd' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>USD/JPY</div><div id='mk-usdjpy' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>USD/SGD</div><div id='mk-usdsgd' class='market-value'>--</div></div>
+            <div class='market-tile'><div class='market-label'>DXY (USD Index)</div><div id='mk-dxy' class='market-value'>--</div></div>
+          </div>
+        </div>
       </div>
-      <nav class='nav'>{nav}</nav>
     </header>
 
     <section class='stats'>
@@ -413,6 +1001,7 @@ def render_page():
 
   <script>
     const SERVICES = {services_json};
+    const MAX_HEADLINES_PER_CARD = 8;
 
     function escapeHtml(value) {{
       return value
@@ -432,11 +1021,96 @@ def render_page():
       return base.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replaceAll(/^-+|-+$/g, '');
     }}
 
-    function headlineHtmlBlock(source) {{
+    function relativeTime(value) {{
+      if (!value) {{
+        return 'time n/a';
+      }}
+      const dt = new Date(value);
+      if (Number.isNaN(dt.getTime())) {{
+        return 'time n/a';
+      }}
+      const now = Date.now();
+      const deltaSec = Math.max(0, Math.floor((now - dt.getTime()) / 1000));
+      if (deltaSec < 60) {{
+        return `${{deltaSec}}s ago`;
+      }}
+      if (deltaSec < 3600) {{
+        return `${{Math.floor(deltaSec / 60)}}m ago`;
+      }}
+      if (deltaSec < 86400) {{
+        return `${{Math.floor(deltaSec / 3600)}}h ago`;
+      }}
+      return `${{Math.floor(deltaSec / 86400)}}d ago`;
+    }}
+
+    function inferImpactDirection(text) {{
+      const bullish = [
+        'surge', 'rally', 'jump', 'breakout', 'gain', 'gains', 'rise', 'rises',
+        'bullish', 'inflow', 'approval', 'beats', 'beat', 'upgrade', 'record high', 'all-time high'
+      ];
+      const bearish = [
+        'drop', 'plunge', 'selloff', 'sell-off', 'crash', 'decline', 'falls', 'fall',
+        'bearish', 'outflow', 'ban', 'lawsuit', 'hack', 'downgrade', 'recession', 'liquidation',
+        'shrink', 'slump', 'weakens', 'weaken', 'cuts'
+      ];
+      let upHits = 0;
+      let downHits = 0;
+      bullish.forEach(word => {{
+        if (text.includes(word)) upHits += 1;
+      }});
+      bearish.forEach(word => {{
+        if (text.includes(word)) downHits += 1;
+      }});
+      if (upHits > downHits) return 'up';
+      if (downHits > upHits) return 'down';
+      return null;
+    }}
+
+    function sectionImpactLabel(sectionName) {{
+      const key = String(sectionName || '').trim().toLowerCase();
+      if (key === 'crypto') return 'Crypto';
+      if (key === 'metals') return 'Metals';
+      if (key === 'financial') return 'Equities';
+      if (key === 'geopolitical') return 'Macro';
+      return '';
+    }}
+
+    function inferHeadlineImpact(sectionName, title) {{
+      const text = String(title || '').toLowerCase();
+      const direction = inferImpactDirection(text);
+      const label = sectionImpactLabel(sectionName);
+      if (!direction || !label) {{
+        return null;
+      }}
+      return {{ label, direction }};
+    }}
+
+    function impactChipHtml(impact) {{
+      if (!impact || !impact.direction) {{
+        return '';
+      }}
+      const symbol = impact.direction === 'up' ? '▲' : '▼';
+      return `<span class="impact-chip impact-${{impact.direction}}">${{symbol}} ${{escapeHtml(impact.label)}}</span>`;
+    }}
+
+    function headlineHtmlBlock(sectionName, source) {{
       if (!source.headlines || !source.headlines.length) {{
         return `<p>No headlines available right now.</p>`;
       }}
-      return `<ul class="headline-list">${{source.headlines.map(item => `<li><a href="${{escapeHtml(item.link)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(item.title)}}</a></li>`).join('')}}</ul>`;
+      const sorted = [...source.headlines].sort((a, b) => {{
+        const ta = a.published_at ? new Date(a.published_at).getTime() : 0;
+        const tb = b.published_at ? new Date(b.published_at).getTime() : 0;
+        return tb - ta;
+      }});
+      const visible = sorted.slice(0, MAX_HEADLINES_PER_CARD);
+      return `<ul class="headline-list">${{visible.map(item => {{
+        const rawTime = item.published_at || source.updated_at;
+        const headlineTime = relativeTime(rawTime);
+        const impact = inferHeadlineImpact(sectionName, item.title);
+        const chip = impactChipHtml(impact);
+        const impactsHtml = chip ? `<span class="impact-wrap">${{chip}}</span>` : '';
+        return `<li><a href="${{escapeHtml(item.link)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(item.title)}}</a><div class="headline-meta"><span class="headline-time">${{escapeHtml(headlineTime)}}</span>${{impactsHtml}}</div></li>`;
+      }}).join('')}}</ul>`;
     }}
 
     function sourceCardHtml(sectionName, source) {{
@@ -444,7 +1118,7 @@ def render_page():
       const badgeText = source.mode === 'page' ? 'Page Fallback' : 'Live Feed';
       const sourceId = source.source_id || '';
       const domId = sourceDomId(sourceId, source.source_name || 'source');
-      const headlineHtml = headlineHtmlBlock(source);
+      const headlineHtml = headlineHtmlBlock(sectionName, source);
 
       return `
         <article class="card" id="card-${{escapeHtml(domId)}}">
@@ -460,7 +1134,7 @@ def render_page():
       `;
     }}
 
-    const REQUEST_TIMEOUT_MS = 22000;
+    const REQUEST_TIMEOUT_MS = 9000;
 
     async function fetchJsonWithTimeout(url) {{
       const controller = new AbortController();
@@ -514,8 +1188,10 @@ def render_page():
       const grid = document.getElementById(`grid-${{slug}}`);
       const count = document.getElementById(`count-${{slug}}`);
 
-      grid.innerHTML = payload.sources.map(source => sourceCardHtml(sectionName, source)).join('');
-      count.textContent = `${{payload.sources.length}} sources`;
+      const sources = payload.sources || [];
+      const headlineCount = sources.reduce((acc, src) => acc + ((src.headlines || []).length), 0);
+      grid.innerHTML = sources.map(source => sourceCardHtml(sectionName, source)).join('');
+      count.textContent = `${{sources.length}} source${{sources.length !== 1 ? 's' : ''}} · ${{headlineCount}} headline${{headlineCount !== 1 ? 's' : ''}}`;
     }}
 
     function renderSectionError(sectionName, message) {{
@@ -552,25 +1228,66 @@ def render_page():
     const MARKET_META = [
       {{ id: 'mk-silver', key: 'silver_spot_usd_oz', digits: 2 }},
       {{ id: 'mk-gold', key: 'gold_spot_usd_oz', digits: 2 }},
-      {{ id: 'mk-btc', key: 'btc_usd', digits: 2 }},
-      {{ id: 'mk-eth', key: 'eth_usd', digits: 2 }},
-      {{ id: 'mk-usdsgd', key: 'usd_sgd', digits: 6 }},
+      {{ id: 'mk-platinum', key: 'platinum_spot_usd_oz', digits: 2 }},
+      {{ id: 'mk-palladium', key: 'palladium_spot_usd_oz', digits: 2 }},
+      {{ id: 'mk-fng', key: 'fear_greed', digits: 0 }},
+      {{ id: 'mk-btc', key: 'btc_usd', chg24Key: 'btc_chg24', digits: 2 }},
+      {{ id: 'mk-eth', key: 'eth_usd', chg24Key: 'eth_chg24', digits: 2 }},
+      {{ id: 'mk-xrp', key: 'xrp_usd', chg24Key: 'xrp_chg24', digits: 4 }},
+      {{ id: 'mk-sol', key: 'sol_usd', chg24Key: 'sol_chg24', digits: 2 }},
+      {{ id: 'mk-bnb', key: 'bnb_usd', chg24Key: 'bnb_chg24', digits: 2 }},
+      {{ id: 'mk-ada', key: 'ada_usd', chg24Key: 'ada_chg24', digits: 4 }},
+      {{ id: 'mk-doge', key: 'doge_usd', chg24Key: 'doge_chg24', digits: 4 }},
+      {{ id: 'mk-avax', key: 'avax_usd', chg24Key: 'avax_chg24', digits: 2 }},
+      {{ id: 'mk-link', key: 'link_usd', chg24Key: 'link_chg24', digits: 2 }},
       {{ id: 'mk-sp500', key: 'sp500', digits: 2 }},
+      {{ id: 'mk-dow', key: 'dow', digits: 2 }},
+      {{ id: 'mk-nasdaq', key: 'nasdaq', digits: 2 }},
+      {{ id: 'mk-russell2000', key: 'russell2000', digits: 2 }},
+      {{ id: 'mk-nikkei', key: 'nikkei', digits: 2 }},
+      {{ id: 'mk-ftse', key: 'ftse', digits: 2 }},
+      {{ id: 'mk-dax', key: 'dax', digits: 2 }},
+      {{ id: 'mk-hangseng', key: 'hangseng', digits: 2 }},
+      {{ id: 'mk-vix', key: 'vix', digits: 2 }},
+      {{ id: 'mk-tnx', key: 'tnx', digits: 3 }},
+      {{ id: 'mk-fiveyr', key: 'fiveyr_yield', digits: 3 }},
+      {{ id: 'mk-thirtyyr', key: 'thirtyyr_yield', digits: 3 }},
+      {{ id: 'mk-wti', key: 'wti', digits: 2 }},
+      {{ id: 'mk-brent', key: 'brent', digits: 2 }},
+      {{ id: 'mk-eurusd', key: 'eurusd', digits: 4 }},
+      {{ id: 'mk-gbpusd', key: 'gbpusd', digits: 4 }},
+      {{ id: 'mk-audusd', key: 'audusd', digits: 4 }},
+      {{ id: 'mk-usdjpy', key: 'usdjpy', digits: 3 }},
+      {{ id: 'mk-usdsgd', key: 'usd_sgd', digits: 4 }},
+      {{ id: 'mk-dxy', key: 'dxy', digits: 2 }},
     ];
 
     let previousMarketMetrics = null;
+    let isLoadingAll = false;
 
-    function setMarketCell(id, text, trend = 'flat') {{
+    function setMarketCell(id, text, trend = 'flat', extraClass = '') {{
       const node = document.getElementById(id);
       if (node) {{
-        node.textContent = text;
-        node.classList.remove('market-up', 'market-down', 'market-flat');
+        node.innerHTML = text;
+        node.classList.remove(
+          'market-up',
+          'market-down',
+          'market-flat',
+          'market-fng-extreme-fear',
+          'market-fng-fear',
+          'market-fng-neutral',
+          'market-fng-greed',
+          'market-fng-extreme-greed'
+        );
         if (trend === 'up') {{
           node.classList.add('market-up');
         }} else if (trend === 'down') {{
           node.classList.add('market-down');
         }} else {{
           node.classList.add('market-flat');
+        }}
+        if (extraClass) {{
+          node.classList.add(extraClass);
         }}
       }}
     }}
@@ -593,34 +1310,91 @@ def render_page():
       return 'flat';
     }}
 
-    function marketDisplayText(value, digits, trend) {{
+    function marketDisplayText(value, digits, trend, change24 = null) {{
       if (value === null || value === undefined || Number.isNaN(Number(value))) {{
-        return 'n/a';
+        return '<span class="mv-price">n/a</span>';
       }}
       const base = fmt(value, digits);
-      if (trend === 'up') {{
-        return `▲ ${{base}}`;
+      const arrow = trend === 'up' ? '▲' : trend === 'down' ? '▼' : '•';
+      const chg = Number(change24);
+      let chgHtml = '';
+      if (Number.isFinite(chg)) {{
+        const sign = chg >= 0 ? '+' : '';
+        const chgCls = chg > 0 ? 'mv-chg-up' : chg < 0 ? 'mv-chg-down' : 'mv-chg-flat';
+        chgHtml = `<span class="mv-chg ${{chgCls}}">${{sign}}${{fmt(chg, 2)}}%</span>`;
       }}
-      if (trend === 'down') {{
-        return `▼ ${{base}}`;
+      return `<span class="mv-price">${{arrow}} ${{base}}</span>${{chgHtml}}`;
+    }}
+
+    function fearGreedBand(value) {{
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {{
+        return 'N/A';
       }}
-      return `• ${{base}}`;
+      if (numeric <= 24) {{
+        return 'Extreme Fear';
+      }}
+      if (numeric <= 44) {{
+        return 'Fear';
+      }}
+      if (numeric <= 54) {{
+        return 'Neutral';
+      }}
+      if (numeric <= 74) {{
+        return 'Greed';
+      }}
+      return 'Extreme Greed';
+    }}
+
+    function fearGreedBandClass(band) {{
+      if (band === 'Extreme Fear') {{
+        return 'market-fng-extreme-fear';
+      }}
+      if (band === 'Fear') {{
+        return 'market-fng-fear';
+      }}
+      if (band === 'Neutral') {{
+        return 'market-fng-neutral';
+      }}
+      if (band === 'Greed') {{
+        return 'market-fng-greed';
+      }}
+      if (band === 'Extreme Greed') {{
+        return 'market-fng-extreme-greed';
+      }}
+      return '';
+    }}
+
+    function fearGreedDisplay(value, band) {{
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) {{
+        return '<span class="mv-price">n/a</span>';
+      }}
+      return `<span class="mv-price">• ${{Math.round(numeric)}}</span><span class="mv-chg">${{band}}</span>`;
     }}
 
     function renderMarketSnapshot(payload) {{
       const metrics = (payload && payload.metrics) ? payload.metrics : {{}};
       MARKET_META.forEach(item => {{
         const currentValue = metrics[item.key];
+        if (item.key === 'fear_greed') {{
+          const band = fearGreedBand(currentValue);
+          const bandClass = fearGreedBandClass(band);
+          setMarketCell(item.id, fearGreedDisplay(currentValue, band), 'flat', bandClass);
+          return;
+        }}
         const previousValue = previousMarketMetrics ? previousMarketMetrics[item.key] : null;
         const trend = marketTrend(previousValue, currentValue);
-        setMarketCell(item.id, marketDisplayText(currentValue, item.digits, trend), trend);
+        const change24 = item.chg24Key ? metrics[item.chg24Key] : null;
+        setMarketCell(item.id, marketDisplayText(currentValue, item.digits, trend, change24), trend);
       }});
       previousMarketMetrics = metrics;
     }}
 
-    async function loadMarketSnapshot() {{
+    async function loadMarketSnapshot(forceRefresh = false) {{
       try {{
-        const payload = await fetchJsonWithTimeout('/api/market-snapshot');
+        const url = withRefreshFlag('/api/market-snapshot', forceRefresh);
+        const payload = await fetchJsonWithTimeout(url);
         renderMarketSnapshot(payload);
       }} catch (_error) {{
         MARKET_META.forEach(item => setMarketCell(item.id, 'n/a', 'flat'));
@@ -628,23 +1402,34 @@ def render_page():
     }}
 
     async function loadAll(forceRefresh = false) {{
+      if (isLoadingAll) {{
+        return;
+      }}
+      isLoadingAll = true;
       let totalSources = 0;
       let totalHeadlines = 0;
-
-      const tasks = Object.entries(SERVICES).map(async ([sectionName, baseUrl]) => {{
-        try {{
-          const payload = await fetchSectionWithOptions(sectionName, baseUrl, forceRefresh);
-          totalSources += payload.sources.length;
-          totalHeadlines += payload.total_headlines;
-          renderSection(sectionName, payload);
-        }} catch (error) {{
-          renderSectionError(sectionName, error.message || 'request failed');
-        }}
+      const marketTask = loadMarketSnapshot(forceRefresh).catch(() => {{
+        MARKET_META.forEach(item => setMarketCell(item.id, 'n/a', 'flat'));
       }});
 
-      await Promise.all(tasks);
-      updateStats(totalSources, totalHeadlines);
-      await loadMarketSnapshot();
+      try {{
+        const tasks = Object.entries(SERVICES).map(async ([sectionName, baseUrl]) => {{
+          try {{
+            const payload = await fetchSectionWithOptions(sectionName, baseUrl, forceRefresh);
+            totalSources += payload.sources.length;
+            totalHeadlines += payload.total_headlines;
+            renderSection(sectionName, payload);
+          }} catch (error) {{
+            renderSectionError(sectionName, error.message || 'request failed');
+          }}
+        }});
+
+        await Promise.all(tasks);
+        updateStats(totalSources, totalHeadlines);
+        await marketTask;
+      }} finally {{
+        isLoadingAll = false;
+      }}
     }}
 
     const refreshBtn = document.getElementById('refresh-btn');
@@ -703,9 +1488,16 @@ def render_page():
       window.location.reload();
     }});
 
+    const MARKET_REFRESH_INTERVAL_MS = 15000;
+    const SECTION_AUTO_REFRESH_MS = 300000;
+
     setInterval(() => {{
-      loadMarketSnapshot();
-    }}, 15000);
+      loadMarketSnapshot(false);
+    }}, MARKET_REFRESH_INTERVAL_MS);
+
+    setInterval(() => {{
+      loadAll(false);
+    }}, SECTION_AUTO_REFRESH_MS);
   </script>
 </body>
 </html>"""
@@ -828,7 +1620,7 @@ def _service_lookup_by_slug():
 
 def _proxy_topic_request(target_url):
   request = Request(target_url, headers={"User-Agent": "TradersViewGateway/1.0"})
-  with urlopen(request, timeout=20) as response:
+  with urlopen(request, timeout=TOPIC_PROXY_TIMEOUT_SECONDS) as response:
     status_code = getattr(response, "status", 200)
     body = response.read()
     content_type = response.headers.get("Content-Type", "application/json; charset=utf-8")
@@ -854,13 +1646,11 @@ def render_services_page(registry):
   for item in registry:
     status_class = "up" if item["status"] == "up" else "down"
     section = item.get("section", "-")
-    source_name = item.get("source_name", "-")
     table_rows.append(
       "<tr>"
       f"<td>{escape(item['name'])}</td>"
       f"<td>{escape(item['role'])}</td>"
       f"<td>{escape(section)}</td>"
-      f"<td>{escape(source_name)}</td>"
       f"<td>{item['port']}</td>"
       f"<td><span class='badge {status_class}'>{escape(item['status'])}</span></td>"
       f"<td>{escape(str(item['detail']))}</td>"
@@ -908,7 +1698,7 @@ def render_services_page(registry):
   </div>
   <table>
     <thead>
-    <tr><th>Name</th><th>Role</th><th>Section</th><th>Source</th><th>Port</th><th>Status</th><th>Health Detail</th></tr>
+    <tr><th>Name</th><th>Role</th><th>Section</th><th>Port</th><th>Status</th><th>Health Detail</th></tr>
     </thead>
     <tbody>{rows_html}</tbody>
   </table>
@@ -981,7 +1771,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path.rstrip("/") == "/api/market-snapshot":
-            payload = json.dumps(build_market_snapshot()).encode("utf-8")
+            refresh_flag = parse_qs(parsed.query).get("refresh", ["0"])[0].strip().lower() in ("1", "true", "yes")
+            payload = json.dumps(build_market_snapshot(force_refresh=refresh_flag)).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
@@ -1035,7 +1826,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = HTTPServer((HOST, PORT), DashboardHandler)
+    server = ThreadingHTTPServer((HOST, PORT), DashboardHandler)
     print(f"Traders View UI running at http://{HOST}:{PORT}")
     try:
         server.serve_forever()
