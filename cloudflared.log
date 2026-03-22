@@ -1,55 +1,27 @@
-2026-03-07T09:27:09Z INF Starting tunnel tunnelID=8d4643c5-13c0-4e31-8ee2-391d775566db
-2026-03-07T09:27:09Z INF Version 2026.2.0 (Checksum 176746db3be7dc7bd48f3dd287c8930a4645ebb6e6700f883fddda5a4c307c16)
-2026-03-07T09:27:09Z INF GOOS: linux, GOVersion: go1.24.13, GoArch: amd64
-2026-03-07T09:27:09Z INF Settings: map[cred-file:/home/ec2-user/.cloudflared/8d4643c5-13c0-4e31-8ee2-391d775566db.json credentials-file:/home/ec2-user/.cloudflared/8d4643c5-13c0-4e31-8ee2-391d775566db.json]
-2026-03-07T09:27:09Z INF cloudflared will not automatically update if installed by a package manager.
-2026-03-07T09:27:09Z INF Generated Connector ID: 2441532b-6d93-4909-80b3-d54786fa23db
-2026-03-07T09:27:09Z INF Initial protocol quic
-2026-03-07T09:27:09Z INF ICMP proxy will use 172.31.17.70 as source for IPv4
-2026-03-07T09:27:09Z INF ICMP proxy will use fe80::eb:96ff:fe3f:1d31 in zone ens5 as source for IPv6
-2026-03-07T09:27:09Z INF ICMP proxy will use 172.31.17.70 as source for IPv4
-2026-03-07T09:27:09Z INF ICMP proxy will use fe80::eb:96ff:fe3f:1d31 in zone ens5 as source for IPv6
-2026-03-07T09:27:09Z INF Starting metrics server on 127.0.0.1:20241/metrics
-2026-03-07T09:27:09Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=0 event=0 ip=198.41.192.107
-2026/03/07 09:27:09 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
-2026-03-07T09:27:10Z INF Registered tunnel connection connIndex=0 connection=2433f879-969e-45ad-b55f-eee62e256aff event=0 ip=198.41.192.107 location=sin08 protocol=quic
-2026-03-07T09:27:10Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=1 event=0 ip=198.41.200.53
-2026-03-07T09:27:10Z INF Registered tunnel connection connIndex=1 connection=d6cb1aea-af9c-47b8-8902-f1515d2fa091 event=0 ip=198.41.200.53 location=sin11 protocol=quic
-2026-03-07T09:27:11Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=2 event=0 ip=198.41.192.7
-2026-03-07T09:27:11Z INF Registered tunnel connection connIndex=2 connection=f26fb8a3-b8e1-4600-a2b3-893eb5297726 event=0 ip=198.41.192.7 location=sin09 protocol=quic
-2026-03-07T09:27:12Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=3 event=0 ip=198.41.200.113
-2026-03-07T09:27:12Z INF Registered tunnel connection connIndex=3 connection=b7c285d3-5e65-4b99-810e-2797193507c1 event=0 ip=198.41.200.113 location=sin12 protocol=quic
-2026-03-07T14:07:05Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=2 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T14:07:05Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=2 dest=https://tradersview.uk/api/section/metals/data event=0 ip=198.41.192.7 type=http
-2026-03-07T14:21:27Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=3 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T14:21:27Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=3 dest=https://tradersview.uk/api/section/crypto/data event=0 ip=198.41.200.113 type=http
-2026-03-07T14:21:27Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=3 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T14:21:27Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=3 dest=https://tradersview.uk/api/section/metals/data event=0 ip=198.41.200.113 type=http
-2026-03-07T14:21:27Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=3 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T14:21:27Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=3 dest=https://tradersview.uk/api/section/financial/data event=0 ip=198.41.200.113 type=http
-2026-03-07T15:23:12Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=2 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T15:23:12Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=2 dest=https://tradersview.uk/api/section/metals/data event=0 ip=198.41.192.7 type=http
-2026-03-07T15:23:12Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=2 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T15:23:12Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=2 dest=https://tradersview.uk/api/section/financial/data event=0 ip=198.41.192.7 type=http
-2026-03-07T15:23:12Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=2 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T15:23:12Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=2 dest=https://tradersview.uk/api/section/crypto/data event=0 ip=198.41.192.7 type=http
-2026-03-07T15:23:12Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=2 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T15:23:12Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=2 dest=https://tradersview.uk/api/section/geopolitical/data event=0 ip=198.41.192.7 type=http
-2026-03-07T15:43:57Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T15:43:57Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://tradersview.uk/api/market-snapshot event=0 ip=198.41.192.107 type=http
-2026-03-07T17:23:55Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T17:23:55Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://tradersview.uk/api/market-snapshot event=0 ip=198.41.192.107 type=http
-2026-03-07T17:41:32Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T17:41:32Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://tradersview.uk/ event=0 ip=198.41.192.107 type=http
-2026-03-07T17:41:33Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T17:41:33Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://tradersview.uk/api/market-snapshot event=0 ip=198.41.192.107 type=http
-2026-03-07T17:41:33Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-07T17:41:33Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://tradersview.uk/api/market-snapshot event=0 ip=198.41.192.107 type=http
-2026-03-08T04:13:50Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=1 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-08T04:13:50Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=1 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-08T04:13:50Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=1 dest=https://tradersview.uk/api/section/crypto/data event=0 ip=198.41.200.53 type=http
-2026-03-08T04:13:50Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=1 dest=https://tradersview.uk/api/section/metals/data event=0 ip=198.41.200.53 type=http
-2026-03-08T04:13:50Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=1 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-08T04:13:50Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=1 event=1 ingressRule=0 originService=http://127.0.0.1:8787
-2026-03-08T04:13:50Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=1 dest=https://tradersview.uk/api/section/financial/data event=0 ip=198.41.200.53 type=http
-2026-03-08T04:13:50Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=1 dest=https://tradersview.uk/api/section/geopolitical/data event=0 ip=198.41.200.53 type=http
+2026-03-22T09:26:26Z INF Starting tunnel tunnelID=8d4643c5-13c0-4e31-8ee2-391d775566db
+2026-03-22T09:26:26Z INF Version 2026.2.0 (Checksum 176746db3be7dc7bd48f3dd287c8930a4645ebb6e6700f883fddda5a4c307c16)
+2026-03-22T09:26:26Z INF GOOS: linux, GOVersion: go1.24.13, GoArch: amd64
+2026-03-22T09:26:26Z INF Settings: map[cred-file:/home/ec2-user/.cloudflared/8d4643c5-13c0-4e31-8ee2-391d775566db.json credentials-file:/home/ec2-user/.cloudflared/8d4643c5-13c0-4e31-8ee2-391d775566db.json]
+2026-03-22T09:26:26Z INF cloudflared will not automatically update if installed by a package manager.
+2026-03-22T09:26:26Z INF Generated Connector ID: 6503abd8-e5fc-4088-ade4-2c65a38ee9cf
+2026-03-22T09:26:26Z INF Initial protocol quic
+2026-03-22T09:26:26Z INF ICMP proxy will use 172.31.17.70 as source for IPv4
+2026-03-22T09:26:26Z INF ICMP proxy will use fe80::eb:96ff:fe3f:1d31 in zone ens5 as source for IPv6
+2026-03-22T09:26:26Z INF ICMP proxy will use 172.31.17.70 as source for IPv4
+2026-03-22T09:26:26Z INF ICMP proxy will use fe80::eb:96ff:fe3f:1d31 in zone ens5 as source for IPv6
+2026-03-22T09:26:26Z INF Starting metrics server on 127.0.0.1:20241/metrics
+2026-03-22T09:26:26Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=0 event=0 ip=198.41.192.37
+2026/03/22 09:26:26 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+2026-03-22T09:26:27Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: Application error 0x0 (remote)" connIndex=0 event=0 ip=198.41.192.37
+2026-03-22T09:26:27Z ERR failed to run the datagram handler error="context canceled" connIndex=0 event=0 ip=198.41.192.37
+2026-03-22T09:26:27Z ERR failed to serve tunnel connection error="control stream encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.37
+2026-03-22T09:26:27Z ERR Serve tunnel error error="control stream encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.37
+2026-03-22T09:26:27Z INF Retrying connection in up to 2s connIndex=0 event=0 ip=198.41.192.37
+2026-03-22T09:26:27Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=0 event=0 ip=198.41.192.37
+2026-03-22T09:26:28Z INF Registered tunnel connection connIndex=0 connection=da2f1ebe-66f4-4106-9593-42b651a10ada event=0 ip=198.41.192.37 location=sin21 protocol=quic
+2026-03-22T09:26:28Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=1 event=0 ip=198.41.200.43
+2026-03-22T09:26:29Z INF Registered tunnel connection connIndex=1 connection=4a162e09-d395-407c-be44-ad22fdd67fa5 event=0 ip=198.41.200.43 location=sin13 protocol=quic
+2026-03-22T09:26:29Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=2 event=0 ip=198.41.200.73
+2026-03-22T09:26:29Z INF Registered tunnel connection connIndex=2 connection=254453e4-c11c-4349-9681-cdc9cd445202 event=0 ip=198.41.200.73 location=sin11 protocol=quic
+2026-03-22T09:26:30Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveP256] connIndex=3 event=0 ip=198.41.192.67
+2026-03-22T09:26:31Z INF Registered tunnel connection connIndex=3 connection=aa8aab21-6068-4f20-bc75-3376e7b8a5b0 event=0 ip=198.41.192.67 location=sin08 protocol=quic
