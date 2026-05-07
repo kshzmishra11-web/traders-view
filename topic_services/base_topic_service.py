@@ -183,7 +183,19 @@ def run_topic_service(
                 "updated_at": datetime.now().isoformat(timespec="seconds"),
             }
 
+        mode = "feed"
         headlines, feed_error = fetch_source_headlines(source["feed_url"])
+
+        fallback_feed_url = source.get("fallback_feed_url")
+        if not headlines and fallback_feed_url:
+            fallback_headlines, fallback_error = fetch_source_headlines(fallback_feed_url)
+            if fallback_headlines:
+                headlines = fallback_headlines
+                feed_error = None
+                mode = "fallback"
+            elif not feed_error:
+                feed_error = fallback_error
+
         error = None
         if not headlines:
             error = feed_error or "Feed unavailable"
@@ -194,7 +206,7 @@ def run_topic_service(
             "source_url": source.get("site_url", source["feed_url"]),
             "type": "feed",
             "headlines": headlines,
-            "mode": "feed",
+            "mode": mode,
             "error": error,
             "section": section_name,
             "service": "topic-service",
@@ -230,29 +242,16 @@ def run_topic_service(
                 payload["cache_age_seconds"] = round(now - entry["epoch"], 2)
                 payload["error"] = payload.get("error") or "Serving stale data due to source timeout"
                 return payload
-        if source.get("type") == "link":
-            return {
-                "source_id": source["source_id"],
-                "source_name": source["source_name"],
-                "source_url": source.get("url"),
-                "type": "link",
-                "headlines": [],
-                "mode": "link",
-                "error": "Link source (no headlines)",
-                "section": section_name,
-                "service": "topic-service",
-                "updated_at": datetime.now().isoformat(timespec="seconds"),
-                "cache": "miss",
-                "cache_age_seconds": 0,
-            }
+        
+        is_link = source.get("type") == "link"
         return {
             "source_id": source["source_id"],
             "source_name": source["source_name"],
-            "source_url": source["feed_url"],
-            "type": "feed",
+            "source_url": source.get("url") if is_link else source.get("feed_url"),
+            "type": "link" if is_link else "feed",
             "headlines": [],
-            "mode": "feed",
-            "error": "Source timed out",
+            "mode": "link" if is_link else "feed",
+            "error": "Link source (no headlines)" if is_link else "Source timed out",
             "section": section_name,
             "service": "topic-service",
             "updated_at": datetime.now().isoformat(timespec="seconds"),

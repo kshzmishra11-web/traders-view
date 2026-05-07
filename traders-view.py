@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from html import escape
+from zoneinfo import ZoneInfo
 
 from service_discovery import build_service_urls, discover_topic_services
 
@@ -38,10 +39,6 @@ COINBASE_BTC_SPOT_URL = "https://api.coinbase.com/v2/prices/BTC-USD/spot"
 COINBASE_ETH_SPOT_URL = "https://api.coinbase.com/v2/prices/ETH-USD/spot"
 BINANCE_BTC_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
 BINANCE_ETH_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT"
-BINANCE_XRP_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT"
-BINANCE_SOL_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT"
-BINANCE_BNB_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT"
-BINANCE_ADA_USDT_URL = "https://api.binance.com/api/v3/ticker/price?symbol=ADAUSDT"
 BINANCE_XRP_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=XRPUSDT"
 BINANCE_SOL_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT"
 BINANCE_BNB_24H_URL = "https://api.binance.com/api/v3/ticker/24hr?symbol=BNBUSDT"
@@ -56,52 +53,154 @@ YAHOO_CHART_URL_TEMPLATE = "https://query1.finance.yahoo.com/v8/finance/chart/{s
 GOLD_API_URL_TEMPLATE = "https://api.gold-api.com/price/{symbol}"
 ALLOW_FUTURES_METALS_FALLBACK = os.environ.get("TRADERS_VIEW_ALLOW_FUTURES_METALS", "0").strip() == "1"
 
-_market_cache_lock = threading.Lock()
-_market_last_good_metrics = {
-  "silver_spot_usd_oz": None,
-  "gold_spot_usd_oz": None,
-  "platinum_spot_usd_oz": None,
-  "palladium_spot_usd_oz": None,
-  "btc_usd": None,
-  "eth_usd": None,
-  "xrp_usd": None,
-  "sol_usd": None,
-  "bnb_usd": None,
-  "ada_usd": None,
-  "doge_usd": None,
-  "avax_usd": None,
-  "link_usd": None,
-  "btc_chg24": None,
-  "eth_chg24": None,
-  "xrp_chg24": None,
-  "sol_chg24": None,
-  "bnb_chg24": None,
-  "ada_chg24": None,
-  "doge_chg24": None,
-  "avax_chg24": None,
-  "link_chg24": None,
-  "usd_sgd": None,
-  "sp500": None,
-  "nasdaq": None,
-  "nikkei": None,
-  "ftse": None,
-  "dax": None,
-  "hangseng": None,
-  "vix": None,
-  "wti": None,
-  "dxy": None,
-  "dow": None,
-  "russell2000": None,
-  "tnx": None,
-  "fiveyr_yield": None,
-  "thirtyyr_yield": None,
-  "brent": None,
-  "eurusd": None,
-  "gbpusd": None,
-  "audusd": None,
-  "usdjpy": None,
-  "fear_greed": None,
+TREND_LOOKUP = {
+  "gold": {"label": "Gold Spot (USD/oz)", "source": "yahoo", "symbol": "GC=F"},
+  "silver": {"label": "Silver Spot (USD/oz)", "source": "yahoo", "symbol": "SI=F"},
+  "platinum": {"label": "Platinum Spot (USD/oz)", "source": "yahoo", "symbol": "PL=F"},
+  "palladium": {"label": "Palladium Spot (USD/oz)", "source": "yahoo", "symbol": "PA=F"},
+  "fng": {"label": "Fear & Greed Index", "source": "fng"},
+  "btc": {"label": "BTC/USD", "source": "yahoo", "symbol": "BTC-USD"},
+  "eth": {"label": "ETH/USD", "source": "yahoo", "symbol": "ETH-USD"},
+  "xrp": {"label": "XRP/USD", "source": "yahoo", "symbol": "XRP-USD"},
+  "sol": {"label": "SOL/USD", "source": "yahoo", "symbol": "SOL-USD"},
+  "bnb": {"label": "BNB/USD", "source": "yahoo", "symbol": "BNB-USD"},
+  "ada": {"label": "ADA/USD", "source": "yahoo", "symbol": "ADA-USD"},
+  "doge": {"label": "DOGE/USD", "source": "yahoo", "symbol": "DOGE-USD"},
+  "avax": {"label": "AVAX/USD", "source": "yahoo", "symbol": "AVAX-USD"},
+  "link": {"label": "LINK/USD", "source": "yahoo", "symbol": "LINK-USD"},
+  "sp500": {"label": "S&P 500", "source": "yahoo", "symbol": "^GSPC"},
+  "dow": {"label": "Dow Jones", "source": "yahoo", "symbol": "^DJI"},
+  "nasdaq": {"label": "NASDAQ", "source": "yahoo", "symbol": "^IXIC"},
+  "russell2000": {"label": "Russell 2000", "source": "yahoo", "symbol": "^RUT"},
+  "nikkei": {"label": "Nikkei 225", "source": "yahoo", "symbol": "^N225"},
+  "ftse": {"label": "FTSE 100", "source": "yahoo", "symbol": "^FTSE"},
+  "dax": {"label": "DAX", "source": "yahoo", "symbol": "^GDAXI"},
+  "hangseng": {"label": "Hang Seng", "source": "yahoo", "symbol": "^HSI"},
+  "vix": {"label": "VIX", "source": "yahoo", "symbol": "^VIX"},
+  "tnx": {"label": "US 10Y Yield (%)", "source": "yahoo", "symbol": "^TNX"},
+  "fiveyr": {"label": "US 5Y Yield (%)", "source": "yahoo", "symbol": "^FVX"},
+  "thirtyyr": {"label": "US 30Y Yield (%)", "source": "yahoo", "symbol": "^TYX"},
+  "wti": {"label": "WTI Crude", "source": "yahoo", "symbol": "CL=F"},
+  "brent": {"label": "Brent Crude", "source": "yahoo", "symbol": "BZ=F"},
+  "eurusd": {"label": "EUR/USD", "source": "yahoo", "symbol": "EURUSD=X"},
+  "gbpusd": {"label": "GBP/USD", "source": "yahoo", "symbol": "GBPUSD=X"},
+  "audusd": {"label": "AUD/USD", "source": "yahoo", "symbol": "AUDUSD=X"},
+  "usdjpy": {"label": "USD/JPY", "source": "yahoo", "symbol": "JPY=X"},
+  "usdsgd": {"label": "USD/SGD", "source": "yahoo", "symbol": "SGD=X"},
+  "dxy": {"label": "DXY (USD Index)", "source": "yahoo", "symbol": "DX-Y.NYB"},
 }
+
+TREND_RANGE_PRESETS = {
+  "1d": {"label": "1D", "yahoo_range": "1d", "yahoo_interval": "5m", "fng_limit": 2},
+  "1m": {"label": "1M", "yahoo_range": "1mo", "yahoo_interval": "1d", "fng_limit": 30},
+  "3m": {"label": "3M", "yahoo_range": "3mo", "yahoo_interval": "1d", "fng_limit": 90},
+  "1y": {"label": "1Y", "yahoo_range": "1y", "yahoo_interval": "1d", "fng_limit": 365},
+  "5y": {"label": "5Y", "yahoo_range": "5y", "yahoo_interval": "1wk", "fng_limit": 1825},
+  "all": {"label": "All", "yahoo_range": "max", "yahoo_interval": "1mo", "fng_limit": 5000},
+}
+
+NON_CRYPTO_CHANGE_SYMBOLS = {
+  "gold_spot_usd_oz": "GC=F",
+  "silver_spot_usd_oz": "SI=F",
+  "platinum_spot_usd_oz": "PL=F",
+  "palladium_spot_usd_oz": "PA=F",
+  "sp500": "^GSPC",
+  "dow": "^DJI",
+  "nasdaq": "^IXIC",
+  "russell2000": "^RUT",
+  "nikkei": "^N225",
+  "ftse": "^FTSE",
+  "dax": "^GDAXI",
+  "hangseng": "^HSI",
+  "vix": "^VIX",
+  "tnx": "^TNX",
+  "fiveyr_yield": "^FVX",
+  "thirtyyr_yield": "^TYX",
+  "wti": "CL=F",
+  "brent": "BZ=F",
+  "eurusd": "EURUSD=X",
+  "gbpusd": "GBPUSD=X",
+  "audusd": "AUDUSD=X",
+  "usdjpy": "JPY=X",
+  "usd_sgd": "SGD=X",
+  "dxy": "DX-Y.NYB",
+}
+NON_CRYPTO_CHANGE_FALLBACK_SYMBOLS = {
+  "dxy": "DX=F",
+}
+
+_METRIC_KEYS = (
+  "silver_spot_usd_oz",
+  "gold_spot_usd_oz",
+  "platinum_spot_usd_oz",
+  "palladium_spot_usd_oz",
+  "btc_usd",
+  "eth_usd",
+  "xrp_usd",
+  "sol_usd",
+  "bnb_usd",
+  "ada_usd",
+  "doge_usd",
+  "avax_usd",
+  "link_usd",
+  "btc_chg24",
+  "eth_chg24",
+  "xrp_chg24",
+  "sol_chg24",
+  "bnb_chg24",
+  "ada_chg24",
+  "doge_chg24",
+  "avax_chg24",
+  "link_chg24",
+  "gold_spot_usd_oz_chg24",
+  "silver_spot_usd_oz_chg24",
+  "platinum_spot_usd_oz_chg24",
+  "palladium_spot_usd_oz_chg24",
+  "usd_sgd",
+  "usd_sgd_chg24",
+  "sp500",
+  "sp500_chg24",
+  "nasdaq",
+  "nasdaq_chg24",
+  "nikkei",
+  "nikkei_chg24",
+  "ftse",
+  "ftse_chg24",
+  "dax",
+  "dax_chg24",
+  "hangseng",
+  "hangseng_chg24",
+  "vix",
+  "vix_chg24",
+  "wti",
+  "wti_chg24",
+  "dxy",
+  "dxy_chg24",
+  "dow",
+  "dow_chg24",
+  "russell2000",
+  "russell2000_chg24",
+  "tnx",
+  "tnx_chg24",
+  "fiveyr_yield",
+  "fiveyr_yield_chg24",
+  "thirtyyr_yield",
+  "thirtyyr_yield_chg24",
+  "brent",
+  "brent_chg24",
+  "eurusd",
+  "eurusd_chg24",
+  "gbpusd",
+  "gbpusd_chg24",
+  "audusd",
+  "audusd_chg24",
+  "usdjpy",
+  "usdjpy_chg24",
+  "fear_greed",
+)
+
+_market_cache_lock = threading.Lock()
+_market_last_good_metrics = dict.fromkeys(_METRIC_KEYS, None)
 _market_snapshot_cache_lock = threading.Lock()
 _market_snapshot_cache = {
   "epoch": 0.0,
@@ -151,6 +250,93 @@ def _fetch_json(url, timeout=NETWORK_TIMEOUT_SECONDS):
     return json.loads(response.read().decode("utf-8", errors="replace"))
 
 
+def _fetch_yahoo_trend_points(symbol, range_value="3mo", interval="1d"):
+  encoded_symbol = quote(symbol, safe="")
+  url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded_symbol}?interval={interval}&range={range_value}"
+  payload = _fetch_json(url)
+  result = (((payload or {}).get("chart") or {}).get("result") or [])
+  if not result:
+    return []
+
+  first = result[0] if isinstance(result[0], dict) else {}
+  timestamps = first.get("timestamp") or []
+  quote_rows = (((first.get("indicators") or {}).get("quote") or []) or [{}])[0]
+  closes = (quote_rows or {}).get("close") or []
+
+  points = []
+  for raw_ts, raw_close in zip(timestamps, closes):
+    ts_value = _safe_float(raw_ts)
+    close_value = _safe_float(raw_close)
+    if ts_value is None or close_value is None:
+      continue
+    points.append({
+      "t": datetime.fromtimestamp(ts_value, tz=timezone.utc).isoformat(),
+      "v": close_value,
+    })
+  return points
+
+
+def _fetch_fng_trend_points(limit=90):
+  payload = _fetch_json(f"https://api.alternative.me/fng/?limit={int(limit)}&format=json")
+  rows = (payload or {}).get("data") or []
+  points = []
+  for item in reversed(rows):
+    raw_ts = _safe_float(item.get("timestamp"))
+    raw_value = _safe_float(item.get("value"))
+    if raw_ts is None or raw_value is None:
+      continue
+    points.append({
+      "t": datetime.fromtimestamp(raw_ts, tz=timezone.utc).isoformat(),
+      "v": raw_value,
+    })
+  return points
+
+
+def build_trend_payload(alias, range_key="3m"):
+  config = TREND_LOOKUP.get(alias)
+  if not config:
+    return None
+
+  selected_range = (range_key or "3m").strip().lower()
+  preset = TREND_RANGE_PRESETS.get(selected_range, TREND_RANGE_PRESETS["3m"])
+  selected_range = selected_range if selected_range in TREND_RANGE_PRESETS else "3m"
+
+  try:
+    if config["source"] == "fng":
+      points = _fetch_fng_trend_points(limit=preset["fng_limit"])
+      source_name = "Alternative.me"
+    else:
+      points = _fetch_yahoo_trend_points(
+        config["symbol"],
+        range_value=preset["yahoo_range"],
+        interval=preset["yahoo_interval"],
+      )
+      if not points and selected_range == "1d":
+        # Some Yahoo symbols return no 1d/5m points when the venue is closed.
+        # Fall back to recent windows and keep only the latest session-like slice.
+        fallback_points = _fetch_yahoo_trend_points(config["symbol"], range_value="5d", interval="15m")
+        if not fallback_points:
+          fallback_points = _fetch_yahoo_trend_points(config["symbol"], range_value="5d", interval="1h")
+        if not fallback_points:
+          fallback_points = _fetch_yahoo_trend_points(config["symbol"], range_value="1mo", interval="1d")
+        if fallback_points:
+          points = fallback_points[-200:]
+      source_name = "Yahoo Finance"
+  except Exception:
+    points = []
+    source_name = config["source"]
+
+  return {
+    "alias": alias,
+    "label": config["label"],
+    "source": source_name,
+    "points": points,
+    "range": selected_range,
+    "range_label": preset["label"],
+    "updated_at": datetime.now(timezone.utc).isoformat(),
+  }
+
+
 def _fetch_stooq_close(symbol, timeout=NETWORK_TIMEOUT_SECONDS):
   encoded_symbol = quote(symbol, safe="")
   url = STOOQ_CSV_URL_TEMPLATE.format(symbol=encoded_symbol)
@@ -169,27 +355,91 @@ def _fetch_stooq_close(symbol, timeout=NETWORK_TIMEOUT_SECONDS):
 
 
 def _fetch_yahoo_last_close(symbol, timeout=NETWORK_TIMEOUT_SECONDS):
-  encoded_symbol = quote(symbol, safe="")
-  url = YAHOO_CHART_URL_TEMPLATE.format(symbol=encoded_symbol)
-  payload = _fetch_json(url, timeout=timeout)
+  result = _fetch_yahoo_last_and_prev_close(symbol, timeout)
+  return result[0] if result else None
 
+
+def _extract_yahoo_distinct_daily_closes(payload):
   chart = (payload or {}).get("chart") or {}
   result = chart.get("result") or []
   if not result:
-    return None
+    return []
 
   first = result[0] if isinstance(result[0], dict) else {}
   indicators = first.get("indicators") or {}
   quote_rows = indicators.get("quote") or []
   if not quote_rows:
-    return None
+    return []
 
   closes = (quote_rows[0] or {}).get("close") or []
-  for raw in reversed(closes):
-    value = _safe_float(raw)
-    if value is not None:
-      return value
-  return None
+  timestamps = first.get("timestamp") or []
+  timezone_name = ((first.get("meta") or {}).get("exchangeTimezoneName")) or "UTC"
+  try:
+    exchange_tz = ZoneInfo(timezone_name)
+  except Exception:
+    exchange_tz = timezone.utc
+
+  distinct_days = []
+  for raw_ts, raw_close in zip(timestamps, closes):
+    close_value = _safe_float(raw_close)
+    timestamp_value = _safe_float(raw_ts)
+    if close_value is None or timestamp_value is None:
+      continue
+
+    trade_day = datetime.fromtimestamp(timestamp_value, tz=exchange_tz).date()
+    if distinct_days and distinct_days[-1][0] == trade_day:
+      distinct_days[-1] = (trade_day, close_value)
+    else:
+      distinct_days.append((trade_day, close_value))
+
+  return distinct_days
+
+
+def _fetch_yahoo_last_and_prev_close(symbol, timeout=NETWORK_TIMEOUT_SECONDS):
+  encoded_symbol = quote(symbol, safe="")
+  url = YAHOO_CHART_URL_TEMPLATE.format(symbol=encoded_symbol)
+  payload = _fetch_json(url, timeout=timeout)
+
+  distinct_days = _extract_yahoo_distinct_daily_closes(payload)
+  if not distinct_days:
+    return None, None
+  if len(distinct_days) == 1:
+    return distinct_days[-1][1], None
+  return distinct_days[-1][1], distinct_days[-2][1]
+
+
+def _pct_change(current_value, previous_value):
+  if current_value is None or previous_value in (None, 0):
+    return None
+  try:
+    return ((float(current_value) - float(previous_value)) / float(previous_value)) * 100.0
+  except (TypeError, ValueError, ZeroDivisionError):
+    return None
+
+
+def _fetch_yahoo_pct_change(symbol):
+  try:
+    current_value, previous_value = _fetch_yahoo_last_and_prev_close(symbol)
+    return _pct_change(current_value, previous_value)
+  except Exception:
+    return None
+
+
+def _fetch_non_crypto_changes():
+  def _fetch_one(metric_key, symbol):
+    change_value = _fetch_yahoo_pct_change(symbol)
+    if change_value is None:
+      fallback_symbol = NON_CRYPTO_CHANGE_FALLBACK_SYMBOLS.get(metric_key)
+      if fallback_symbol:
+        change_value = _fetch_yahoo_pct_change(fallback_symbol)
+    return metric_key, change_value
+
+  with ThreadPoolExecutor(max_workers=len(NON_CRYPTO_CHANGE_SYMBOLS)) as pool:
+    futs = [
+      pool.submit(_fetch_one, metric_key, symbol)
+      for metric_key, symbol in NON_CRYPTO_CHANGE_SYMBOLS.items()
+    ]
+    return {f"{metric_key}_chg24": val for metric_key, val in (f.result() for f in futs)}
 
 
 def _is_reasonable_metal_price(symbol, value):
@@ -199,6 +449,10 @@ def _is_reasonable_metal_price(symbol, value):
     return 300.0 <= value <= 20000.0
   if symbol == "XAG":
     return 3.0 <= value <= 500.0
+  if symbol == "XPT":
+    return 300.0 <= value <= 5000.0
+  if symbol == "XPD":
+    return 300.0 <= value <= 5000.0
   return False
 
 
@@ -338,23 +592,47 @@ def _fetch_russell2000():
 
 
 def _fetch_platinum():
+  v = None
   try:
     v = _fetch_stooq_close("xptusd")
-    if v is None:
-      v = _fetch_yahoo_last_close("PL=F")
-    return v
   except Exception:
-    return None
+    pass
+
+  if v is None:
+    try:
+      v = _fetch_gold_api_spot("XPT")
+    except Exception:
+      pass
+
+  if v is None:
+    try:
+      v = _fetch_yahoo_last_close("PL=F")
+    except Exception:
+      pass
+
+  return v
 
 
 def _fetch_palladium():
+  v = None
   try:
     v = _fetch_stooq_close("xpdusd")
-    if v is None:
-      v = _fetch_yahoo_last_close("PA=F")
-    return v
   except Exception:
-    return None
+    pass
+
+  if v is None:
+    try:
+      v = _fetch_gold_api_spot("XPD")
+    except Exception:
+      pass
+
+  if v is None:
+    try:
+      v = _fetch_yahoo_last_close("PA=F")
+    except Exception:
+      pass
+
+  return v
 
 
 def _fetch_binance_24h_both(url):
@@ -368,37 +646,14 @@ def _fetch_binance_24h_both(url):
     return None, None
 
 
-def _fetch_doge():
-  return _fetch_binance_24h_both(BINANCE_DOGE_24H_URL)
-
-
-def _fetch_avax():
-  return _fetch_binance_24h_both(BINANCE_AVAX_24H_URL)
-
-
-def _fetch_link():
-  return _fetch_binance_24h_both(BINANCE_LINK_24H_URL)
-
-
 def _fetch_global_indices():
-  nikkei = ftse = dax = hangseng = None
-  try:
-    nikkei = _fetch_yahoo_last_close("^N225")
-  except Exception:
-    pass
-  try:
-    ftse = _fetch_yahoo_last_close("^FTSE")
-  except Exception:
-    pass
-  try:
-    dax = _fetch_yahoo_last_close("^GDAXI")
-  except Exception:
-    pass
-  try:
-    hangseng = _fetch_yahoo_last_close("^HSI")
-  except Exception:
-    pass
-  return nikkei, ftse, dax, hangseng
+  indices = {}
+  for symbol, name in [("^N225", "nikkei"), ("^FTSE", "ftse"), ("^GDAXI", "dax"), ("^HSI", "hangseng")]:
+    try:
+      indices[name] = _fetch_yahoo_last_close(symbol)
+    except Exception:
+      indices[name] = None
+  return indices["nikkei"], indices["ftse"], indices["dax"], indices["hangseng"]
 
 
 def _fetch_fiveyr_yield():
@@ -435,22 +690,6 @@ def _fetch_audusd():
     return None
 
 
-def _fetch_binance_usdt_price(url):
-  try:
-    payload = _fetch_json(url)
-    return _safe_float((payload or {}).get("price"))
-  except Exception:
-    return None
-
-
-def _fetch_binance_24h_change(url):
-  try:
-    payload = _fetch_json(url)
-    return _safe_float((payload or {}).get("priceChangePercent"))
-  except Exception:
-    return None
-
-
 def _fetch_crypto_prices():
   try:
     crypto = _fetch_json(COINGECKO_SIMPLE_PRICE_URL)
@@ -476,16 +715,12 @@ def _fetch_crypto_prices():
     eth_payload = _fetch_json(COINBASE_ETH_SPOT_URL)
     btc = _safe_float(((btc_payload or {}).get("data") or {}).get("amount"))
     eth = _safe_float(((eth_payload or {}).get("data") or {}).get("amount"))
-    xrp = _fetch_binance_usdt_price(BINANCE_XRP_USDT_URL)
-    sol = _fetch_binance_usdt_price(BINANCE_SOL_USDT_URL)
-    bnb = _fetch_binance_usdt_price(BINANCE_BNB_USDT_URL)
-    ada = _fetch_binance_usdt_price(BINANCE_ADA_USDT_URL)
-    btc_chg24 = _fetch_binance_24h_change(BINANCE_BTC_24H_URL)
-    eth_chg24 = _fetch_binance_24h_change(BINANCE_ETH_24H_URL)
-    xrp_chg24 = _fetch_binance_24h_change(BINANCE_XRP_24H_URL)
-    sol_chg24 = _fetch_binance_24h_change(BINANCE_SOL_24H_URL)
-    bnb_chg24 = _fetch_binance_24h_change(BINANCE_BNB_24H_URL)
-    ada_chg24 = _fetch_binance_24h_change(BINANCE_ADA_24H_URL)
+    xrp, xrp_chg24 = _fetch_binance_24h_both(BINANCE_XRP_24H_URL)
+    sol, sol_chg24 = _fetch_binance_24h_both(BINANCE_SOL_24H_URL)
+    bnb, bnb_chg24 = _fetch_binance_24h_both(BINANCE_BNB_24H_URL)
+    ada, ada_chg24 = _fetch_binance_24h_both(BINANCE_ADA_24H_URL)
+    btc_chg24 = _fetch_binance_24h_both(BINANCE_BTC_24H_URL)[1]
+    eth_chg24 = _fetch_binance_24h_both(BINANCE_ETH_24H_URL)[1]
     if btc is not None and eth is not None:
       return btc, eth, xrp, sol, bnb, ada, btc_chg24, eth_chg24, xrp_chg24, sol_chg24, bnb_chg24, ada_chg24, "Coinbase+Binance"
   except Exception:
@@ -494,16 +729,12 @@ def _fetch_crypto_prices():
   try:
     btc = _fetch_stooq_close("btcusd")
     eth = _fetch_stooq_close("ethusd")
-    xrp = _fetch_binance_usdt_price(BINANCE_XRP_USDT_URL)
-    sol = _fetch_binance_usdt_price(BINANCE_SOL_USDT_URL)
-    bnb = _fetch_binance_usdt_price(BINANCE_BNB_USDT_URL)
-    ada = _fetch_binance_usdt_price(BINANCE_ADA_USDT_URL)
-    btc_chg24 = _fetch_binance_24h_change(BINANCE_BTC_24H_URL)
-    eth_chg24 = _fetch_binance_24h_change(BINANCE_ETH_24H_URL)
-    xrp_chg24 = _fetch_binance_24h_change(BINANCE_XRP_24H_URL)
-    sol_chg24 = _fetch_binance_24h_change(BINANCE_SOL_24H_URL)
-    bnb_chg24 = _fetch_binance_24h_change(BINANCE_BNB_24H_URL)
-    ada_chg24 = _fetch_binance_24h_change(BINANCE_ADA_24H_URL)
+    xrp, xrp_chg24 = _fetch_binance_24h_both(BINANCE_XRP_24H_URL)
+    sol, sol_chg24 = _fetch_binance_24h_both(BINANCE_SOL_24H_URL)
+    bnb, bnb_chg24 = _fetch_binance_24h_both(BINANCE_BNB_24H_URL)
+    ada, ada_chg24 = _fetch_binance_24h_both(BINANCE_ADA_24H_URL)
+    btc_chg24 = _fetch_binance_24h_both(BINANCE_BTC_24H_URL)[1]
+    eth_chg24 = _fetch_binance_24h_both(BINANCE_ETH_24H_URL)[1]
     if btc is not None and eth is not None:
       return btc, eth, xrp, sol, bnb, ada, btc_chg24, eth_chg24, xrp_chg24, sol_chg24, bnb_chg24, ada_chg24, "Stooq+Binance"
   except Exception:
@@ -551,51 +782,7 @@ def _fetch_indices_macro_snapshot():
 def _build_market_snapshot_uncached():
   snapshot = {
     "updated_at": None,
-    "metrics": {
-      "silver_spot_usd_oz": None,
-      "gold_spot_usd_oz": None,
-      "platinum_spot_usd_oz": None,
-      "palladium_spot_usd_oz": None,
-      "btc_usd": None,
-      "eth_usd": None,
-      "xrp_usd": None,
-      "sol_usd": None,
-      "bnb_usd": None,
-      "ada_usd": None,
-      "doge_usd": None,
-      "avax_usd": None,
-      "link_usd": None,
-      "btc_chg24": None,
-      "eth_chg24": None,
-      "xrp_chg24": None,
-      "sol_chg24": None,
-      "bnb_chg24": None,
-      "ada_chg24": None,
-      "doge_chg24": None,
-      "avax_chg24": None,
-      "link_chg24": None,
-      "usd_sgd": None,
-      "sp500": None,
-      "nasdaq": None,
-      "nikkei": None,
-      "ftse": None,
-      "dax": None,
-      "hangseng": None,
-      "vix": None,
-      "wti": None,
-      "dxy": None,
-      "dow": None,
-      "russell2000": None,
-      "tnx": None,
-      "fiveyr_yield": None,
-      "thirtyyr_yield": None,
-      "brent": None,
-      "eurusd": None,
-      "gbpusd": None,
-      "audusd": None,
-      "usdjpy": None,
-      "fear_greed": None,
-    },
+    "metrics": dict.fromkeys(_METRIC_KEYS, None),
     "sources": {
       "metals": "Stooq",
       "crypto": "CoinGecko",
@@ -605,11 +792,12 @@ def _build_market_snapshot_uncached():
     },
   }
 
-  with ThreadPoolExecutor(max_workers=22) as pool:
+  with ThreadPoolExecutor(max_workers=24) as pool:
     futures = {
       "metals": pool.submit(_fetch_metals_prices),
       "indices_macro": pool.submit(_fetch_indices_macro_snapshot),
       "crypto": pool.submit(_fetch_crypto_prices),
+      "non_crypto_changes": pool.submit(_fetch_non_crypto_changes),
       "fx": pool.submit(_fetch_usd_sgd_rate),
       "fng": pool.submit(_fetch_fear_greed),
       "dow": pool.submit(_fetch_dow),
@@ -620,9 +808,9 @@ def _build_market_snapshot_uncached():
       "usdjpy": pool.submit(_fetch_usdjpy),
       "platinum": pool.submit(_fetch_platinum),
       "palladium": pool.submit(_fetch_palladium),
-      "doge": pool.submit(_fetch_doge),
-      "avax": pool.submit(_fetch_avax),
-      "link": pool.submit(_fetch_link),
+      "doge": pool.submit(_fetch_binance_24h_both, BINANCE_DOGE_24H_URL),
+      "avax": pool.submit(_fetch_binance_24h_both, BINANCE_AVAX_24H_URL),
+      "link": pool.submit(_fetch_binance_24h_both, BINANCE_LINK_24H_URL),
       "global_indices": pool.submit(_fetch_global_indices),
       "fiveyr_yield": pool.submit(_fetch_fiveyr_yield),
       "thirtyyr_yield": pool.submit(_fetch_thirtyyr_yield),
@@ -647,6 +835,7 @@ def _build_market_snapshot_uncached():
       ada_chg24,
       crypto_source,
     ) = futures["crypto"].result()
+    non_crypto_changes = futures["non_crypto_changes"].result()
     usd_sgd_value, usd_sgd_source = futures["fx"].result()
     fear_greed_value = futures["fng"].result()
 
@@ -654,14 +843,23 @@ def _build_market_snapshot_uncached():
   snapshot["metrics"]["silver_spot_usd_oz"] = silver_value
   snapshot["metrics"]["platinum_spot_usd_oz"] = futures["platinum"].result()
   snapshot["metrics"]["palladium_spot_usd_oz"] = futures["palladium"].result()
+  snapshot["metrics"]["gold_spot_usd_oz_chg24"] = non_crypto_changes.get("gold_spot_usd_oz_chg24")
+  snapshot["metrics"]["silver_spot_usd_oz_chg24"] = non_crypto_changes.get("silver_spot_usd_oz_chg24")
+  snapshot["metrics"]["platinum_spot_usd_oz_chg24"] = non_crypto_changes.get("platinum_spot_usd_oz_chg24")
+  snapshot["metrics"]["palladium_spot_usd_oz_chg24"] = non_crypto_changes.get("palladium_spot_usd_oz_chg24")
   if metals_source:
     snapshot["sources"]["metals"] = metals_source
 
   snapshot["metrics"]["sp500"] = sp500_value
+  snapshot["metrics"]["sp500_chg24"] = non_crypto_changes.get("sp500_chg24")
   snapshot["metrics"]["nasdaq"] = nasdaq_value
+  snapshot["metrics"]["nasdaq_chg24"] = non_crypto_changes.get("nasdaq_chg24")
   snapshot["metrics"]["vix"] = vix_value
+  snapshot["metrics"]["vix_chg24"] = non_crypto_changes.get("vix_chg24")
   snapshot["metrics"]["wti"] = wti_value
+  snapshot["metrics"]["wti_chg24"] = non_crypto_changes.get("wti_chg24")
   snapshot["metrics"]["dxy"] = dxy_value
+  snapshot["metrics"]["dxy_chg24"] = non_crypto_changes.get("dxy_chg24")
   if indices_source:
     snapshot["sources"]["indices"] = indices_source
 
@@ -681,16 +879,23 @@ def _build_market_snapshot_uncached():
     snapshot["sources"]["crypto"] = crypto_source
 
   snapshot["metrics"]["usd_sgd"] = usd_sgd_value
+  snapshot["metrics"]["usd_sgd_chg24"] = non_crypto_changes.get("usd_sgd_chg24")
   if usd_sgd_source:
     snapshot["sources"]["fx"] = usd_sgd_source
 
   snapshot["metrics"]["fear_greed"] = fear_greed_value
   snapshot["metrics"]["dow"] = futures["dow"].result()
+  snapshot["metrics"]["dow_chg24"] = non_crypto_changes.get("dow_chg24")
   snapshot["metrics"]["russell2000"] = futures["russell2000"].result()
+  snapshot["metrics"]["russell2000_chg24"] = non_crypto_changes.get("russell2000_chg24")
   snapshot["metrics"]["tnx"] = futures["tnx"].result()
+  snapshot["metrics"]["tnx_chg24"] = non_crypto_changes.get("tnx_chg24")
   snapshot["metrics"]["brent"] = futures["brent"].result()
+  snapshot["metrics"]["brent_chg24"] = non_crypto_changes.get("brent_chg24")
   snapshot["metrics"]["eurusd"] = futures["eurusd"].result()
+  snapshot["metrics"]["eurusd_chg24"] = non_crypto_changes.get("eurusd_chg24")
   snapshot["metrics"]["usdjpy"] = futures["usdjpy"].result()
+  snapshot["metrics"]["usdjpy_chg24"] = non_crypto_changes.get("usdjpy_chg24")
   doge_v, doge_c = futures["doge"].result()
   avax_v, avax_c = futures["avax"].result()
   link_v, link_c = futures["link"].result()
@@ -702,13 +907,21 @@ def _build_market_snapshot_uncached():
   snapshot["metrics"]["link_chg24"] = link_c
   nikkei_v, ftse_v, dax_v, hangseng_v = futures["global_indices"].result()
   snapshot["metrics"]["nikkei"] = nikkei_v
+  snapshot["metrics"]["nikkei_chg24"] = non_crypto_changes.get("nikkei_chg24")
   snapshot["metrics"]["ftse"] = ftse_v
+  snapshot["metrics"]["ftse_chg24"] = non_crypto_changes.get("ftse_chg24")
   snapshot["metrics"]["dax"] = dax_v
+  snapshot["metrics"]["dax_chg24"] = non_crypto_changes.get("dax_chg24")
   snapshot["metrics"]["hangseng"] = hangseng_v
+  snapshot["metrics"]["hangseng_chg24"] = non_crypto_changes.get("hangseng_chg24")
   snapshot["metrics"]["fiveyr_yield"] = futures["fiveyr_yield"].result()
+  snapshot["metrics"]["fiveyr_yield_chg24"] = non_crypto_changes.get("fiveyr_yield_chg24")
   snapshot["metrics"]["thirtyyr_yield"] = futures["thirtyyr_yield"].result()
+  snapshot["metrics"]["thirtyyr_yield_chg24"] = non_crypto_changes.get("thirtyyr_yield_chg24")
   snapshot["metrics"]["gbpusd"] = futures["gbpusd"].result()
+  snapshot["metrics"]["gbpusd_chg24"] = non_crypto_changes.get("gbpusd_chg24")
   snapshot["metrics"]["audusd"] = futures["audusd"].result()
+  snapshot["metrics"]["audusd_chg24"] = non_crypto_changes.get("audusd_chg24")
 
   with _market_cache_lock:
     for metric_key, metric_value in snapshot["metrics"].items():
@@ -808,16 +1021,37 @@ def render_page():
     .market-groups {{ margin-top: 12px; display: grid; gap: 10px; }}
     .market-group {{ display: grid; gap: 6px; }}
     .market-group-label {{
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 800;
-      letter-spacing: 0.35px;
+      letter-spacing: 0.4px;
       text-transform: uppercase;
-      color: #f0d060;
-      padding-left: 2px;
+      color: #e8eeff;
       text-decoration: none;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      align-self: start;
+      width: fit-content;
+      gap: 5px;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
     }}
-    .market-group-label:hover {{ color: #fff; text-decoration: underline; }}
+    .market-group-label::after {{
+      content: '›';
+      font-size: 13px;
+      font-weight: 400;
+      color: #f0d060;
+      line-height: 1;
+    }}
+    .market-group-label:hover {{
+      background: rgba(0,0,0,0.75);
+      border-color: rgba(240,208,96,0.5);
+      color: #fff;
+      text-decoration: none;
+    }}
     .market-strip {{
       display: flex;
       gap: 8px;
@@ -837,6 +1071,21 @@ def render_page():
       padding: 7px 8px;
       min-width: 165px;
       flex: 0 0 165px;
+    }}
+    .market-tile-link {{
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+    }}
+    .market-tile-link:hover {{
+      border-color: rgba(240,208,96,0.5);
+      background: rgba(0,0,0,0.34);
+      transform: translateY(-1px);
+    }}
+    .market-tile-link:focus-visible {{
+      outline: 3px solid rgba(240,208,96,0.45);
+      outline-offset: 2px;
     }}
     .market-label {{ font-size: 10px; letter-spacing: 0.2px; text-transform: uppercase; color: #c8d5ff; font-weight: 700; margin-bottom: 2px; white-space: normal; line-height: 1.15; min-height: 22px; }}
     .market-value {{ font-size: 14px; font-weight: 800; letter-spacing: -0.2px; color: #ffffff; overflow: hidden; }}
@@ -907,6 +1156,32 @@ def render_page():
     .impact-chip.impact-down {{ background: #ffedf1; color: #8d1e3c; border-color: #f7c1ce; }}
     .placeholder, .service-error {{ display: grid; place-items: center; min-height: 120px; color: var(--muted); }}
     .service-error strong {{ color: #a11; }}
+    .back-to-top {{
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 40;
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 14px;
+      background: rgba(11, 22, 50, 0.92);
+      color: #fff;
+      box-shadow: 0 12px 28px rgba(11, 22, 50, 0.24);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(10px);
+      transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease, background 160ms ease;
+    }}
+    .back-to-top:hover {{ background: #10224f; }}
+    .back-to-top:focus-visible {{ outline: 3px solid rgba(47, 109, 246, 0.35); outline-offset: 3px; }}
+    .back-to-top.visible {{
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }}
     @media (max-width: 1200px) {{
       .card-grid {{ grid-template-columns: repeat(2, minmax(0,1fr)); }}
       .market-tile {{ min-width: 155px; flex-basis: 155px; }}
@@ -917,7 +1192,7 @@ def render_page():
       .card {{ max-height: none; overflow: visible; }}
       .section-head h2 {{ font-size: 23px; }}
       .brand-title {{ font-size: 25px; }}
-      .market-group-label {{ padding-left: 2px; }}
+      .market-group-label {{ font-size: 11px; padding: 3px 8px; }}
       .market-tile {{ min-width: 145px; flex-basis: 145px; }}
     }}
   </style>
@@ -936,55 +1211,55 @@ def render_page():
         <div class='market-group'>
           <a class='market-group-label' href='#metals'>Metals</a>
           <div class='market-strip market-strip-metals'>
-            <div class='market-tile'><div class='market-label'>Gold Spot (USD/oz)</div><div id='mk-gold' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Silver Spot (USD/oz)</div><div id='mk-silver' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Platinum Spot (USD/oz)</div><div id='mk-platinum' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Palladium Spot (USD/oz)</div><div id='mk-palladium' class='market-value'>--</div></div>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/GC%3DF/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Gold Spot (USD/oz)</div><div id='mk-gold' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/SI%3DF/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Silver Spot (USD/oz)</div><div id='mk-silver' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/PL%3DF/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Platinum Spot (USD/oz)</div><div id='mk-platinum' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/PA%3DF/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Palladium Spot (USD/oz)</div><div id='mk-palladium' class='market-value'>--</div></a>
           </div>
         </div>
         <div class='market-group'>
           <a class='market-group-label' href='#crypto'>Crypto</a>
           <div class='market-strip market-strip-crypto'>
-            <div class='market-tile'><div class='market-label'>Fear &amp; Greed Index</div><div id='mk-fng' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>BTC/USD</div><div id='mk-btc' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>ETH/USD</div><div id='mk-eth' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>XRP/USD</div><div id='mk-xrp' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>SOL/USD</div><div id='mk-sol' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>BNB/USD</div><div id='mk-bnb' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>ADA/USD</div><div id='mk-ada' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>DOGE/USD</div><div id='mk-doge' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>AVAX/USD</div><div id='mk-avax' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>LINK/USD</div><div id='mk-link' class='market-value'>--</div></div>
+            <a class='market-tile market-tile-link' href='https://coinmarketcap.com/charts/fear-and-greed-index/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Fear &amp; Greed Index</div><div id='mk-fng' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/BTC-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>BTC/USD</div><div id='mk-btc' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/ETH-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>ETH/USD</div><div id='mk-eth' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/XRP-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>XRP/USD</div><div id='mk-xrp' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/SOL-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>SOL/USD</div><div id='mk-sol' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/BNB-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>BNB/USD</div><div id='mk-bnb' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/ADA-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>ADA/USD</div><div id='mk-ada' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/DOGE-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>DOGE/USD</div><div id='mk-doge' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/AVAX-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>AVAX/USD</div><div id='mk-avax' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/LINK-USD/' target='_blank' rel='noopener noreferrer'><div class='market-label'>LINK/USD</div><div id='mk-link' class='market-value'>--</div></a>
           </div>
         </div>
         <div class='market-group'>
           <a class='market-group-label' href='#financial'>Financial</a>
           <div class='market-strip market-strip-markets'>
-            <div class='market-tile'><div class='market-label'>S&amp;P 500</div><div id='mk-sp500' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Dow Jones</div><div id='mk-dow' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>NASDAQ</div><div id='mk-nasdaq' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Russell 2000</div><div id='mk-russell2000' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Nikkei 225</div><div id='mk-nikkei' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>FTSE 100</div><div id='mk-ftse' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>DAX</div><div id='mk-dax' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Hang Seng</div><div id='mk-hangseng' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>VIX</div><div id='mk-vix' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>US 10Y Yield (%)</div><div id='mk-tnx' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>US 5Y Yield (%)</div><div id='mk-fiveyr' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>US 30Y Yield (%)</div><div id='mk-thirtyyr' class='market-value'>--</div></div>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EGSPC/' target='_blank' rel='noopener noreferrer'><div class='market-label'>S&amp;P 500</div><div id='mk-sp500' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EDJI/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Dow Jones</div><div id='mk-dow' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EIXIC/' target='_blank' rel='noopener noreferrer'><div class='market-label'>NASDAQ</div><div id='mk-nasdaq' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5ERUT/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Russell 2000</div><div id='mk-russell2000' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EN225/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Nikkei 225</div><div id='mk-nikkei' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EFTSE/' target='_blank' rel='noopener noreferrer'><div class='market-label'>FTSE 100</div><div id='mk-ftse' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EGDAXI/' target='_blank' rel='noopener noreferrer'><div class='market-label'>DAX</div><div id='mk-dax' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EHSI/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Hang Seng</div><div id='mk-hangseng' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EVIX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>VIX</div><div id='mk-vix' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5ETNX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>US 10Y Yield (%)</div><div id='mk-tnx' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5EFVX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>US 5Y Yield (%)</div><div id='mk-fiveyr' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/%5ETYX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>US 30Y Yield (%)</div><div id='mk-thirtyyr' class='market-value'>--</div></a>
           </div>
         </div>
         <div class='market-group'>
           <a class='market-group-label' href='#geopolitical'>Geopolitical</a>
           <div class='market-strip market-strip-macro'>
-            <div class='market-tile'><div class='market-label'>WTI Crude</div><div id='mk-wti' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>Brent Crude</div><div id='mk-brent' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>EUR/USD</div><div id='mk-eurusd' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>GBP/USD</div><div id='mk-gbpusd' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>AUD/USD</div><div id='mk-audusd' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>USD/JPY</div><div id='mk-usdjpy' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>USD/SGD</div><div id='mk-usdsgd' class='market-value'>--</div></div>
-            <div class='market-tile'><div class='market-label'>DXY (USD Index)</div><div id='mk-dxy' class='market-value'>--</div></div>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/CL%3DF/' target='_blank' rel='noopener noreferrer'><div class='market-label'>WTI Crude</div><div id='mk-wti' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/BZ%3DF/' target='_blank' rel='noopener noreferrer'><div class='market-label'>Brent Crude</div><div id='mk-brent' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/EURUSD%3DX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>EUR/USD</div><div id='mk-eurusd' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/GBPUSD%3DX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>GBP/USD</div><div id='mk-gbpusd' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/AUDUSD%3DX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>AUD/USD</div><div id='mk-audusd' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/JPY%3DX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>USD/JPY</div><div id='mk-usdjpy' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/SGD%3DX/' target='_blank' rel='noopener noreferrer'><div class='market-label'>USD/SGD</div><div id='mk-usdsgd' class='market-value'>--</div></a>
+            <a class='market-tile market-tile-link' href='https://finance.yahoo.com/quote/DX-Y.NYB/' target='_blank' rel='noopener noreferrer'><div class='market-label'>DXY (USD Index)</div><div id='mk-dxy' class='market-value'>--</div></a>
           </div>
         </div>
       </div>
@@ -998,6 +1273,8 @@ def render_page():
 
     <main>{section_shells}</main>
   </div>
+
+  <button id='back-to-top' class='back-to-top' type='button' aria-label='Back to top'>↑ Top</button>
 
   <script>
     const SERVICES = {services_json};
@@ -1044,23 +1321,71 @@ def render_page():
     }}
 
     function inferImpactDirection(text) {{
+      const NEGATION_RE = /\b(no|not|never|without|don't|doesn't|didn't|won't|isn't|aren't|wasn't|weren't|can't|cannot|hardly|barely|fails? to|unable to)\b.{{0,30}}$/;
+
       const bullish = [
-        'surge', 'rally', 'jump', 'breakout', 'gain', 'gains', 'rise', 'rises',
-        'bullish', 'inflow', 'approval', 'beats', 'beat', 'upgrade', 'record high', 'all-time high'
+        // momentum / price action
+        'surge', 'surges', 'surging', 'rally', 'rallies', 'rallying', 'jump', 'jumps', 'jumping',
+        'spike', 'spikes', 'breakout', 'breaks out', 'break out', 'soar', 'soars', 'soaring',
+        'rocket', 'rockets', 'skyrocket', 'skyrockets', 'moon', 'moons',
+        'gain', 'gains', 'gaining', 'rise', 'rises', 'rising', 'rebound', 'rebounds', 'rebounding',
+        'recover', 'recovers', 'recovery', 'bounce', 'bounces', 'bouncing',
+        // sentiment / positioning
+        'bullish', 'optimism', 'optimistic', 'confidence', 'confident',
+        // flows / activity
+        'inflow', 'inflows', 'buy', 'buys', 'buying', 'accumulate', 'accumulation',
+        // fundamentals / events
+        'approval', 'approved', 'approves', 'launch', 'launches', 'partnership', 'adoption',
+        'beats', 'beat', 'beats expectations', 'exceeds', 'outperforms', 'upgrade', 'upgraded',
+        'record high', 'all-time high', 'ath', 'new high', 'multi-year high', 'yearly high',
+        'profit', 'profits', 'revenue growth', 'strong earnings', 'strong demand',
+        'rate cut', 'rate cuts', 'easing', 'stimulus', 'dovish',
+        'etf approval', 'etf approved', 'listing', 'listings', 'added',
+        'growth', 'expansion', 'boosts', 'boost',
       ];
       const bearish = [
-        'drop', 'plunge', 'selloff', 'sell-off', 'crash', 'decline', 'falls', 'fall',
-        'bearish', 'outflow', 'ban', 'lawsuit', 'hack', 'downgrade', 'recession', 'liquidation',
-        'shrink', 'slump', 'weakens', 'weaken', 'cuts'
+        // momentum / price action
+        'drop', 'drops', 'dropping', 'plunge', 'plunges', 'plunging', 'crash', 'crashes', 'crashing',
+        'selloff', 'sell-off', 'selling off', 'tumble', 'tumbles', 'tumbling',
+        'decline', 'declines', 'declining', 'fall', 'falls', 'falling', 'slump', 'slumps', 'slumping',
+        'sink', 'sinks', 'sinking', 'slide', 'slides', 'sliding', 'collapse', 'collapses', 'collapsing',
+        'tank', 'tanks', 'tanking', 'dump', 'dumps', 'dumping',
+        // sentiment / positioning
+        'bearish', 'pessimism', 'pessimistic', 'fear', 'panic', 'uncertainty',
+        // flows / activity
+        'outflow', 'outflows', 'sell', 'selling', 'short', 'shorting', 'liquidation', 'liquidations',
+        // fundamentals / events
+        'ban', 'bans', 'banned', 'lawsuit', 'lawsuits', 'hack', 'hacked', 'hacking', 'exploit',
+        'downgrade', 'downgraded', 'misses', 'miss', 'missed expectations', 'underperforms',
+        'recession', 'contraction', 'default', 'defaults', 'bankruptcy', 'bankrupt', 'insolvency',
+        'record low', 'all-time low', 'new low', 'multi-year low', 'yearly low',
+        'loss', 'losses', 'weak earnings', 'weak demand', 'revenue miss',
+        'rate hike', 'rate hikes', 'hawkish', 'tightening', 'inflation surge',
+        'delisting', 'delisted', 'suspended', 'freeze', 'frozen',
+        'warning', 'concern', 'concerns', 'risks', 'threat', 'threatens',
+        'tariff', 'tariffs', 'sanctions', 'penalty', 'penalties', 'fine', 'fined',
+        'layoff', 'layoffs', 'job cuts', 'cutbacks',
       ];
+
       let upHits = 0;
       let downHits = 0;
-      bullish.forEach(word => {{
-        if (text.includes(word)) upHits += 1;
+
+      bullish.forEach(phrase => {{
+        const idx = text.indexOf(phrase);
+        if (idx === -1) return;
+        const before = text.slice(Math.max(0, idx - 40), idx);
+        if (NEGATION_RE.test(before)) return;
+        upHits += phrase.includes(' ') ? 2 : 1;
       }});
-      bearish.forEach(word => {{
-        if (text.includes(word)) downHits += 1;
+
+      bearish.forEach(phrase => {{
+        const idx = text.indexOf(phrase);
+        if (idx === -1) return;
+        const before = text.slice(Math.max(0, idx - 40), idx);
+        if (NEGATION_RE.test(before)) return;
+        downHits += phrase.includes(' ') ? 2 : 1;
       }});
+
       if (upHits > downHits) return 'up';
       if (downHits > upHits) return 'down';
       return null;
@@ -1095,7 +1420,8 @@ def render_page():
 
     function headlineHtmlBlock(sectionName, source) {{
       if (!source.headlines || !source.headlines.length) {{
-        return `<p>No headlines available right now.</p>`;
+        const reason = source.error ? `Source status: ${{escapeHtml(source.error)}}` : 'No headlines available right now.';
+        return `<p>${{reason}}</p>`;
       }}
       const sorted = [...source.headlines].sort((a, b) => {{
         const ta = a.published_at ? new Date(a.published_at).getTime() : 0;
@@ -1114,8 +1440,9 @@ def render_page():
     }}
 
     function sourceCardHtml(sectionName, source) {{
-      const badgeClass = source.mode === 'page' ? 'mode-page' : 'mode-feed';
-      const badgeText = source.mode === 'page' ? 'Page Fallback' : 'Live Feed';
+      const isFallbackMode = source.mode === 'page' || source.mode === 'fallback';
+      const badgeClass = isFallbackMode ? 'mode-page' : 'mode-feed';
+      const badgeText = source.mode === 'page' ? 'Page Fallback' : source.mode === 'fallback' ? 'Backup Feed' : 'Live Feed';
       const sourceId = source.source_id || '';
       const domId = sourceDomId(sourceId, source.source_name || 'source');
       const headlineHtml = headlineHtmlBlock(sectionName, source);
@@ -1226,10 +1553,10 @@ def render_page():
     }}
 
     const MARKET_META = [
-      {{ id: 'mk-silver', key: 'silver_spot_usd_oz', digits: 2 }},
-      {{ id: 'mk-gold', key: 'gold_spot_usd_oz', digits: 2 }},
-      {{ id: 'mk-platinum', key: 'platinum_spot_usd_oz', digits: 2 }},
-      {{ id: 'mk-palladium', key: 'palladium_spot_usd_oz', digits: 2 }},
+      {{ id: 'mk-silver', key: 'silver_spot_usd_oz', chg24Key: 'silver_spot_usd_oz_chg24', digits: 2 }},
+      {{ id: 'mk-gold', key: 'gold_spot_usd_oz', chg24Key: 'gold_spot_usd_oz_chg24', digits: 2 }},
+      {{ id: 'mk-platinum', key: 'platinum_spot_usd_oz', chg24Key: 'platinum_spot_usd_oz_chg24', digits: 2 }},
+      {{ id: 'mk-palladium', key: 'palladium_spot_usd_oz', chg24Key: 'palladium_spot_usd_oz_chg24', digits: 2 }},
       {{ id: 'mk-fng', key: 'fear_greed', digits: 0 }},
       {{ id: 'mk-btc', key: 'btc_usd', chg24Key: 'btc_chg24', digits: 2 }},
       {{ id: 'mk-eth', key: 'eth_usd', chg24Key: 'eth_chg24', digits: 2 }},
@@ -1240,26 +1567,26 @@ def render_page():
       {{ id: 'mk-doge', key: 'doge_usd', chg24Key: 'doge_chg24', digits: 4 }},
       {{ id: 'mk-avax', key: 'avax_usd', chg24Key: 'avax_chg24', digits: 2 }},
       {{ id: 'mk-link', key: 'link_usd', chg24Key: 'link_chg24', digits: 2 }},
-      {{ id: 'mk-sp500', key: 'sp500', digits: 2 }},
-      {{ id: 'mk-dow', key: 'dow', digits: 2 }},
-      {{ id: 'mk-nasdaq', key: 'nasdaq', digits: 2 }},
-      {{ id: 'mk-russell2000', key: 'russell2000', digits: 2 }},
-      {{ id: 'mk-nikkei', key: 'nikkei', digits: 2 }},
-      {{ id: 'mk-ftse', key: 'ftse', digits: 2 }},
-      {{ id: 'mk-dax', key: 'dax', digits: 2 }},
-      {{ id: 'mk-hangseng', key: 'hangseng', digits: 2 }},
-      {{ id: 'mk-vix', key: 'vix', digits: 2 }},
-      {{ id: 'mk-tnx', key: 'tnx', digits: 3 }},
-      {{ id: 'mk-fiveyr', key: 'fiveyr_yield', digits: 3 }},
-      {{ id: 'mk-thirtyyr', key: 'thirtyyr_yield', digits: 3 }},
-      {{ id: 'mk-wti', key: 'wti', digits: 2 }},
-      {{ id: 'mk-brent', key: 'brent', digits: 2 }},
-      {{ id: 'mk-eurusd', key: 'eurusd', digits: 4 }},
-      {{ id: 'mk-gbpusd', key: 'gbpusd', digits: 4 }},
-      {{ id: 'mk-audusd', key: 'audusd', digits: 4 }},
-      {{ id: 'mk-usdjpy', key: 'usdjpy', digits: 3 }},
-      {{ id: 'mk-usdsgd', key: 'usd_sgd', digits: 4 }},
-      {{ id: 'mk-dxy', key: 'dxy', digits: 2 }},
+      {{ id: 'mk-sp500', key: 'sp500', chg24Key: 'sp500_chg24', digits: 2 }},
+      {{ id: 'mk-dow', key: 'dow', chg24Key: 'dow_chg24', digits: 2 }},
+      {{ id: 'mk-nasdaq', key: 'nasdaq', chg24Key: 'nasdaq_chg24', digits: 2 }},
+      {{ id: 'mk-russell2000', key: 'russell2000', chg24Key: 'russell2000_chg24', digits: 2 }},
+      {{ id: 'mk-nikkei', key: 'nikkei', chg24Key: 'nikkei_chg24', digits: 2 }},
+      {{ id: 'mk-ftse', key: 'ftse', chg24Key: 'ftse_chg24', digits: 2 }},
+      {{ id: 'mk-dax', key: 'dax', chg24Key: 'dax_chg24', digits: 2 }},
+      {{ id: 'mk-hangseng', key: 'hangseng', chg24Key: 'hangseng_chg24', digits: 2 }},
+      {{ id: 'mk-vix', key: 'vix', chg24Key: 'vix_chg24', digits: 2 }},
+      {{ id: 'mk-tnx', key: 'tnx', chg24Key: 'tnx_chg24', digits: 3 }},
+      {{ id: 'mk-fiveyr', key: 'fiveyr_yield', chg24Key: 'fiveyr_yield_chg24', digits: 3 }},
+      {{ id: 'mk-thirtyyr', key: 'thirtyyr_yield', chg24Key: 'thirtyyr_yield_chg24', digits: 3 }},
+      {{ id: 'mk-wti', key: 'wti', chg24Key: 'wti_chg24', digits: 2 }},
+      {{ id: 'mk-brent', key: 'brent', chg24Key: 'brent_chg24', digits: 2 }},
+      {{ id: 'mk-eurusd', key: 'eurusd', chg24Key: 'eurusd_chg24', digits: 4 }},
+      {{ id: 'mk-gbpusd', key: 'gbpusd', chg24Key: 'gbpusd_chg24', digits: 4 }},
+      {{ id: 'mk-audusd', key: 'audusd', chg24Key: 'audusd_chg24', digits: 4 }},
+      {{ id: 'mk-usdjpy', key: 'usdjpy', chg24Key: 'usdjpy_chg24', digits: 3 }},
+      {{ id: 'mk-usdsgd', key: 'usd_sgd', chg24Key: 'usd_sgd_chg24', digits: 4 }},
+      {{ id: 'mk-dxy', key: 'dxy', chg24Key: 'dxy_chg24', digits: 2 }},
     ];
 
     let previousMarketMetrics = null;
@@ -1433,7 +1760,44 @@ def render_page():
     }}
 
     const refreshBtn = document.getElementById('refresh-btn');
+    const backToTopBtn = document.getElementById('back-to-top');
     const refreshDefaultText = 'Refresh';
+
+    function tileAliasFromNode(tileLink) {{
+      const metricNode = tileLink.querySelector('.market-value[id^="mk-"]');
+      if (!metricNode) return '';
+      return metricNode.id.replace('mk-', '');
+    }}
+
+    function initializeTrendTileLinks() {{
+      document.querySelectorAll('.market-tile-link').forEach(tileLink => {{
+        const alias = tileAliasFromNode(tileLink);
+        if (!alias) return;
+        tileLink.setAttribute('href', `/trend/${{encodeURIComponent(alias)}}`);
+      }});
+    }}
+
+    function updateBackToTopVisibility() {{
+      if (!backToTopBtn) {{
+        return;
+      }}
+      if (window.scrollY > 280) {{
+        backToTopBtn.classList.add('visible');
+      }} else {{
+        backToTopBtn.classList.remove('visible');
+      }}
+    }}
+
+    if (backToTopBtn) {{
+      backToTopBtn.addEventListener('click', () => {{
+        window.scrollTo({{ top: 0, behavior: 'smooth' }});
+      }});
+      window.addEventListener('scroll', updateBackToTopVisibility, {{ passive: true }});
+      updateBackToTopVisibility();
+    }}
+
+    initializeTrendTileLinks();
+
     refreshBtn.addEventListener('click', async () => {{
       refreshBtn.disabled = true;
       refreshBtn.textContent = 'Refreshing...';
@@ -1445,6 +1809,21 @@ def render_page():
         refreshBtn.disabled = false;
         refreshBtn.textContent = refreshDefaultText;
       }}
+    }});
+
+    document.addEventListener('click', event => {{
+      const tileLink = event.target.closest('.market-tile-link');
+      if (!tileLink) {{
+        return;
+      }}
+
+      const alias = tileAliasFromNode(tileLink);
+      if (!alias) {{
+        return;
+      }}
+
+      event.preventDefault();
+      window.open(`/trend/${{encodeURIComponent(alias)}}`, '_blank', 'noopener,noreferrer');
     }});
 
     document.addEventListener('click', async (event) => {{
@@ -1683,6 +2062,10 @@ def render_services_page(registry):
   .badge {{ display: inline-block; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; font-size: 10px; font-weight: 800; letter-spacing: 0.4px; }}
   .badge.up {{ background: #e8f8ee; color: #1f7d4e; border: 1px solid #bce6ca; }}
   .badge.down {{ background: #ffecee; color: #b32134; border: 1px solid #f3c0c7; }}
+  .back-to-top {{ position: fixed; right: 16px; bottom: 16px; z-index: 40; border: 0; border-radius: 999px; padding: 11px 14px; background: rgba(15, 27, 61, 0.92); color: #fff; box-shadow: 0 12px 28px rgba(15, 27, 61, 0.22); font-size: 13px; font-weight: 800; cursor: pointer; opacity: 0; visibility: hidden; transform: translateY(10px); transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease, background 160ms ease; }}
+  .back-to-top:hover {{ background: #152654; }}
+  .back-to-top:focus-visible {{ outline: 3px solid rgba(47, 109, 246, 0.35); outline-offset: 3px; }}
+  .back-to-top.visible {{ opacity: 1; visibility: visible; transform: translateY(0); }}
   </style>
 </head>
 <body>
@@ -1703,6 +2086,326 @@ def render_services_page(registry):
     <tbody>{rows_html}</tbody>
   </table>
   </div>
+  <button id='back-to-top' class='back-to-top' type='button' aria-label='Back to top'>↑ Top</button>
+  <script>
+    const backToTopBtn = document.getElementById('back-to-top');
+    function updateBackToTopVisibility() {{
+      if (!backToTopBtn) {{
+        return;
+      }}
+      if (window.scrollY > 220) {{
+        backToTopBtn.classList.add('visible');
+      }} else {{
+        backToTopBtn.classList.remove('visible');
+      }}
+    }}
+    if (backToTopBtn) {{
+      backToTopBtn.addEventListener('click', () => {{
+        window.scrollTo({{ top: 0, behavior: 'smooth' }});
+      }});
+      window.addEventListener('scroll', updateBackToTopVisibility, {{ passive: true }});
+      updateBackToTopVisibility();
+    }}
+  </script>
+</body>
+</html>"""
+
+
+def render_trend_page(alias):
+  config = TREND_LOOKUP.get(alias)
+  if not config:
+    return """<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Trend Not Found</title></head><body><p>Trend not found.</p><p><a href='/'>Back to dashboard</a></p></body></html>"""
+
+  title = escape(config["label"])
+  api_url = f"/api/trend/{quote(alias, safe='')}"
+  return f"""<!doctype html>
+<html lang='en'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <title>{title} Trend</title>
+  <style>
+    body {{ margin: 0; font-family: Inter, 'Segoe UI', Arial, sans-serif; background: #eef2f8; color: #162038; }}
+    .wrap {{ max-width: 1040px; margin: 0 auto; padding: 20px; }}
+    .top {{ background: linear-gradient(145deg, #0b1632, #142653); color: #fff; border-radius: 14px; padding: 16px 18px; box-shadow: 0 10px 24px rgba(12, 24, 54, 0.22); }}
+    .top h1 {{ margin: 0; font-size: 28px; letter-spacing: -0.45px; }}
+    .top p {{ margin: 4px 0 0; color: #c8d6ff; font-size: 13px; }}
+    .back {{ display: inline-block; margin-top: 12px; color: #d9e4ff; text-decoration: none; font-size: 13px; font-weight: 700; }}
+    .back:hover {{ text-decoration: underline; }}
+    .card {{ margin-top: 14px; background: #fff; border: 1px solid #d9e2f3; border-radius: 14px; padding: 14px; box-shadow: 0 10px 24px rgba(17, 30, 62, 0.06); }}
+    .stats {{ display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }}
+    .stat {{ background: #f7faff; border: 1px solid #dce6f7; border-radius: 10px; padding: 10px; }}
+    .stat-label {{ color: #6d7ca0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.35px; font-weight: 700; }}
+    .stat-value {{ margin-top: 4px; font-size: 18px; font-weight: 780; color: #142046; }}
+    .stat-value.down {{ color: #b4293f; }}
+    .stat-value.up {{ color: #1d7a4f; }}
+    .range-row {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 12px; }}
+    .range-btn {{ border: 1px solid #ccd8ef; background: #fff; color: #334368; border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 760; cursor: pointer; }}
+    .range-btn:hover {{ background: #f3f7ff; }}
+    .range-btn.active {{ background: #e8efff; border-color: #a9bee8; color: #122248; }}
+    #chart {{ width: 100%; height: auto; display: block; border-radius: 10px; background: linear-gradient(180deg, #fbfdff 0%, #f3f7ff 100%); }}
+    .meta {{ margin-top: 10px; color: #5f6f91; font-size: 12px; }}
+    .error {{ color: #a21c2b; font-weight: 700; }}
+    @media (max-width: 980px) {{ .stats {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
+  </style>
+</head>
+<body>
+  <div class='wrap'>
+    <div class='top'>
+      <h1>{title}</h1>
+      <p>Internal trend view with multi-range analytics</p>
+      <a class='back' href='/'>Back to dashboard</a>
+    </div>
+    <div class='card'>
+      <div class='stats'>
+        <div class='stat'><div class='stat-label'>Latest</div><div id='stat-latest' class='stat-value'>--</div></div>
+        <div class='stat'><div class='stat-label'>Change</div><div id='stat-change' class='stat-value'>--</div></div>
+        <div class='stat'><div class='stat-label'>Period High</div><div id='stat-high' class='stat-value'>--</div></div>
+        <div class='stat'><div class='stat-label'>Period Low</div><div id='stat-low' class='stat-value'>--</div></div>
+        <div class='stat'><div class='stat-label'>Points</div><div id='stat-points' class='stat-value'>--</div></div>
+      </div>
+      <div class='range-row'>
+        <button class='range-btn' data-range='1d'>1D</button>
+        <button class='range-btn' data-range='1m'>1M</button>
+        <button class='range-btn active' data-range='3m'>3M</button>
+        <button class='range-btn' data-range='1y'>1Y</button>
+        <button class='range-btn' data-range='5y'>5Y</button>
+        <button class='range-btn' data-range='all'>All</button>
+      </div>
+      <canvas id='chart' width='940' height='360' aria-label='Trend chart'></canvas>
+      <div id='meta' class='meta'>Loading trend data...</div>
+    </div>
+  </div>
+  <script>
+    const meta = document.getElementById('meta');
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+
+    function fmt(n) {{
+      if (!Number.isFinite(n)) return 'n/a';
+      return n.toLocaleString(undefined, {{ maximumFractionDigits: 4 }});
+    }}
+
+    function drawSeries(points) {{
+      const w = canvas.width;
+      const h = canvas.height;
+      const leftPad = 74;
+      const rightPad = 40;
+      const topPad = 24;
+      const bottomPad = 40;
+      const xAxisSpace = 30;
+      const plotTop = topPad;
+      const plotBottom = h - bottomPad - xAxisSpace;
+      const vals = points.map(p => Number(p.v)).filter(Number.isFinite);
+      if (!vals.length) {{
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#7a879f';
+        ctx.font = '14px Segoe UI';
+        ctx.fillText('No trend points available.', 24, 40);
+        return;
+      }}
+
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      const span = Math.max(0.000001, max - min);
+      const last = vals[vals.length - 1];
+      const first = vals[0];
+      const isUp = last >= first;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#f8fbff';
+      ctx.fillRect(0, 0, w, h);
+
+      const formatPriceTick = (value) => {{
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '';
+        if (Math.abs(n) >= 1000) {{
+          return n.toLocaleString(undefined, {{ maximumFractionDigits: 2 }});
+        }}
+        if (Math.abs(n) >= 10) {{
+          return n.toLocaleString(undefined, {{ maximumFractionDigits: 3 }});
+        }}
+        return n.toLocaleString(undefined, {{ maximumFractionDigits: 5 }});
+      }};
+
+      ctx.fillStyle = '#4c5d84';
+      ctx.font = '11px Segoe UI';
+      ctx.strokeStyle = '#dce5f4';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {{
+        const y = plotTop + ((plotBottom - plotTop) * i / 4);
+        const tickValue = max - (span * i / 4);
+        const priceLabel = formatPriceTick(tickValue);
+        const lw = ctx.measureText(priceLabel).width;
+        ctx.fillText(priceLabel, leftPad - 8 - lw, y + 4);
+
+        ctx.beginPath();
+        ctx.moveTo(leftPad, y);
+        ctx.lineTo(w - rightPad, y);
+        ctx.stroke();
+      }}
+
+      ctx.strokeStyle = '#b7c5df';
+      ctx.beginPath();
+      ctx.moveTo(leftPad, plotTop);
+      ctx.lineTo(leftPad, plotBottom);
+      ctx.stroke();
+
+      const series = points.map((p, idx) => {{
+        const x = leftPad + ((w - leftPad - rightPad) * idx / Math.max(1, points.length - 1));
+        const y = plotBottom - ((Number(p.v) - min) / span) * (plotBottom - plotTop);
+        return {{ x, y }};
+      }});
+
+      const gradient = ctx.createLinearGradient(0, plotTop, 0, plotBottom);
+      if (isUp) {{
+        gradient.addColorStop(0, 'rgba(32, 168, 96, 0.25)');
+        gradient.addColorStop(1, 'rgba(32, 168, 96, 0.03)');
+      }} else {{
+        gradient.addColorStop(0, 'rgba(227, 59, 78, 0.25)');
+        gradient.addColorStop(1, 'rgba(227, 59, 78, 0.03)');
+      }}
+
+      ctx.beginPath();
+      series.forEach((pt, idx) => {{
+        if (idx === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      }});
+      ctx.lineTo(series[series.length - 1].x, plotBottom);
+      ctx.lineTo(series[0].x, plotBottom);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      ctx.strokeStyle = isUp ? '#1f9d5f' : '#e23b4e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      series.forEach((pt, idx) => {{
+        if (idx === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      }});
+      ctx.stroke();
+
+      const firstTime = points[0] && points[0].t ? new Date(points[0].t) : null;
+      const lastTime = points[points.length - 1] && points[points.length - 1].t ? new Date(points[points.length - 1].t) : null;
+
+      ctx.strokeStyle = '#b7c5df';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(leftPad, plotBottom);
+      ctx.lineTo(w - rightPad, plotBottom);
+      ctx.stroke();
+
+      const totalMs = (firstTime && lastTime) ? (lastTime.getTime() - firstTime.getTime()) : 0;
+      const formatTickLabel = (dt) => {{
+        if (!(dt instanceof Date) || Number.isNaN(dt.getTime())) return '';
+        if (totalMs <= 3 * 24 * 60 * 60 * 1000) {{
+          return dt.toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit', hour12: false }});
+        }}
+        if (totalMs <= 180 * 24 * 60 * 60 * 1000) {{
+          return dt.toLocaleDateString([], {{ month: 'short', day: 'numeric' }});
+        }}
+        return dt.toLocaleDateString([], {{ month: 'short', year: 'numeric' }});
+      }};
+
+      const tickCount = 8;
+      ctx.fillStyle = '#405074';
+      ctx.font = '12px Segoe UI';
+      for (let i = 0; i <= tickCount; i++) {{
+        const idx = Math.round((points.length - 1) * i / tickCount);
+        const pt = series[idx];
+        if (!pt) continue;
+        const dt = new Date(points[idx].t);
+        const label = formatTickLabel(dt);
+
+        ctx.strokeStyle = '#a9b7d1';
+        ctx.beginPath();
+        ctx.moveTo(pt.x, plotBottom);
+        ctx.lineTo(pt.x, plotBottom + 4);
+        ctx.stroke();
+
+        const labelWidth = ctx.measureText(label).width;
+        let lx = pt.x - labelWidth / 2;
+        if (lx < leftPad) lx = leftPad;
+        if (lx + labelWidth > w - rightPad) lx = w - rightPad - labelWidth;
+        ctx.fillText(label, lx, plotBottom + 18);
+      }}
+    }}
+
+    function updateStats(points) {{
+      const latestEl = document.getElementById('stat-latest');
+      const changeEl = document.getElementById('stat-change');
+      const highEl = document.getElementById('stat-high');
+      const lowEl = document.getElementById('stat-low');
+      const pointsEl = document.getElementById('stat-points');
+
+      const vals = points.map(p => Number(p.v)).filter(Number.isFinite);
+      if (!vals.length) {{
+        latestEl.textContent = '--';
+        changeEl.textContent = '--';
+        changeEl.classList.remove('up', 'down');
+        highEl.textContent = '--';
+        lowEl.textContent = '--';
+        pointsEl.textContent = '0';
+        return;
+      }}
+
+      const first = vals[0];
+      const last = vals[vals.length - 1];
+      const high = Math.max(...vals);
+      const low = Math.min(...vals);
+      const change = first === 0 ? null : ((last - first) / first) * 100;
+
+      latestEl.textContent = fmt(last);
+      highEl.textContent = fmt(high);
+      lowEl.textContent = fmt(low);
+      pointsEl.textContent = String(vals.length);
+
+      if (Number.isFinite(change)) {{
+        const sign = change >= 0 ? '+' : '';
+        changeEl.textContent = `${{sign}}${{change.toFixed(2)}}%`;
+        changeEl.classList.remove('up', 'down');
+        if (change > 0) changeEl.classList.add('up');
+        if (change < 0) changeEl.classList.add('down');
+      }} else {{
+        changeEl.textContent = '--';
+        changeEl.classList.remove('up', 'down');
+      }}
+    }}
+
+    function setActiveRange(rangeKey) {{
+      document.querySelectorAll('.range-btn').forEach(btn => {{
+        if (btn.getAttribute('data-range') === rangeKey) btn.classList.add('active');
+        else btn.classList.remove('active');
+      }});
+    }}
+
+    async function loadTrend(rangeKey = '3m') {{
+      try {{
+        setActiveRange(rangeKey);
+        const response = await fetch(`{api_url}?range=${{encodeURIComponent(rangeKey)}}`, {{ cache: 'no-store' }});
+        if (!response.ok) throw new Error('Unable to fetch trend data');
+        const payload = await response.json();
+        const points = payload.points || [];
+        drawSeries(points);
+        updateStats(points);
+        const latest = points.length ? points[points.length - 1].v : null;
+        const updated = payload.updated_at ? new Date(payload.updated_at).toLocaleString() : 'n/a';
+        meta.textContent = `Range: ${{payload.range_label || rangeKey.toUpperCase()}} | Source: ${{payload.source || 'n/a'}} | Points: ${{points.length}} | Latest: ${{fmt(Number(latest))}} | Updated: ${{updated}}`;
+      }} catch (_error) {{
+        meta.innerHTML = '<span class="error">Unable to load trend data right now.</span>';
+        drawSeries([]);
+        updateStats([]);
+      }}
+    }}
+
+    document.querySelectorAll('.range-btn').forEach(btn => {{
+      btn.addEventListener('click', () => {{
+        const rangeKey = btn.getAttribute('data-range') || '3m';
+        loadTrend(rangeKey);
+      }});
+    }});
+
+    loadTrend('3m');
+  </script>
 </body>
 </html>"""
 
@@ -1770,6 +2473,35 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
+        if parsed.path.startswith("/api/trend/"):
+            alias = unquote(parsed.path[len("/api/trend/"):]).strip().lower()
+            range_key = parse_qs(parsed.query).get("range", ["3m"])[0].strip().lower()
+            payload_obj = build_trend_payload(alias, range_key=range_key)
+            if payload_obj is None:
+                _send_proxy_error(self, 404, "Unknown trend")
+                return
+            payload = json.dumps(payload_obj).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            _set_security_headers(self)
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        if parsed.path.startswith("/trend/"):
+            alias = unquote(parsed.path[len("/trend/"):]).strip().lower()
+            html = render_trend_page(alias).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html)))
+            self.send_header("Cache-Control", "no-store")
+            _set_security_headers(self)
+            self.end_headers()
+            self.wfile.write(html)
+            return
+
         if parsed.path.rstrip("/") == "/api/market-snapshot":
             refresh_flag = parse_qs(parsed.query).get("refresh", ["0"])[0].strip().lower() in ("1", "true", "yes")
             payload = json.dumps(build_market_snapshot(force_refresh=refresh_flag)).encode("utf-8")
@@ -1805,11 +2537,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path not in ("/", "/index.html"):
+            payload_404 = b"Not Found"
             self.send_response(404)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload_404)))
             _set_security_headers(self)
             self.end_headers()
-            self.wfile.write(b"Not Found")
+            self.wfile.write(payload_404)
             return
 
         html = render_page().encode("utf-8")
