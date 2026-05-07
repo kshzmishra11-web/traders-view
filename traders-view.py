@@ -2143,7 +2143,7 @@ def render_trend_page(alias):
     .range-btn {{ border: 1px solid #ccd8ef; background: #fff; color: #334368; border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 760; cursor: pointer; }}
     .range-btn:hover {{ background: #f3f7ff; }}
     .range-btn.active {{ background: #e8efff; border-color: #a9bee8; color: #122248; }}
-    #chart {{ width: 100%; height: auto; display: block; border-radius: 10px; background: linear-gradient(180deg, #fbfdff 0%, #f3f7ff 100%); }}
+    #chart {{ width: 100%; height: auto; display: block; border-radius: 10px; background: linear-gradient(180deg, #fbfdff 0%, #f3f7ff 100%); cursor: crosshair; }}
     .meta {{ margin-top: 10px; color: #5f6f91; font-size: 12px; }}
     .error {{ color: #a21c2b; font-weight: 700; }}
     @media (max-width: 980px) {{ .stats {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
@@ -2180,6 +2180,9 @@ def render_trend_page(alias):
     const meta = document.getElementById('meta');
     const canvas = document.getElementById('chart');
     const ctx = canvas.getContext('2d');
+    let _currentPoints = [];
+    let _currentSeries = [];
+    let _plotLayout = {{}};
 
     function fmt(n) {{
       if (!Number.isFinite(n)) return 'n/a';
@@ -2328,6 +2331,9 @@ def render_trend_page(alias):
         if (lx + labelWidth > w - rightPad) lx = w - rightPad - labelWidth;
         ctx.fillText(label, lx, plotBottom + 18);
       }}
+      _currentPoints = points;
+      _currentSeries = series;
+      _plotLayout = {{ leftPad, rightPad, topPad, plotTop, plotBottom, w, h, min, max, span }};
     }}
 
     function updateStats(points) {{
@@ -2396,6 +2402,67 @@ def render_trend_page(alias):
         updateStats([]);
       }}
     }}
+
+    function drawHoverOverlay(mouseX) {{
+      if (!_currentSeries.length || !_currentPoints.length) return;
+      const {{ leftPad, rightPad, topPad, plotTop, plotBottom, w, h }} = _plotLayout;
+      if (mouseX < leftPad || mouseX > w - rightPad) {{
+        drawSeries(_currentPoints);
+        return;
+      }}
+      let nearest = 0;
+      let minDist = Infinity;
+      _currentSeries.forEach((pt, i) => {{
+        const dist = Math.abs(pt.x - mouseX);
+        if (dist < minDist) {{ minDist = dist; nearest = i; }}
+      }});
+      const pt = _currentSeries[nearest];
+      const dp = _currentPoints[nearest];
+      drawSeries(_currentPoints);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(80, 100, 160, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pt.x, plotTop);
+      ctx.lineTo(pt.x, plotBottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.strokeStyle = '#1a6ed8';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      const dt = dp.t ? new Date(dp.t).toLocaleString() : '';
+      const val = fmt(Number(dp.v));
+      const label = dt ? `${{dt}}  ${{val}}` : val;
+      ctx.font = 'bold 12px Segoe UI';
+      const tw = ctx.measureText(label).width + 16;
+      const th = 24;
+      let tx = pt.x + 10;
+      let ty = pt.y - 14;
+      if (tx + tw > w - rightPad) tx = pt.x - tw - 10;
+      if (ty < plotTop) ty = plotTop + 4;
+      if (ty + th > plotBottom) ty = plotBottom - th;
+      ctx.fillStyle = 'rgba(18, 30, 64, 0.88)';
+      ctx.fillRect(tx, ty, tw, th);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, tx + 8, ty + 16);
+      ctx.restore();
+    }}
+
+    canvas.addEventListener('mousemove', (e) => {{
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const mouseX = (e.clientX - rect.left) * scaleX;
+      drawHoverOverlay(mouseX);
+    }});
+
+    canvas.addEventListener('mouseleave', () => {{
+      if (_currentPoints.length) drawSeries(_currentPoints);
+    }});
 
     document.querySelectorAll('.range-btn').forEach(btn => {{
       btn.addEventListener('click', () => {{
