@@ -1190,6 +1190,7 @@ def render_page():
       .stats {{ grid-template-columns: 1fr; }}
       .card-grid {{ grid-template-columns: 1fr; }}
       .card {{ max-height: none; overflow: visible; }}
+      .card-grid .card:nth-child(n+3) {{ display: none; }}
       .section-head h2 {{ font-size: 23px; }}
       .brand-title {{ font-size: 25px; }}
       .market-group-label {{ font-size: 11px; padding: 3px 8px; }}
