@@ -1,3 +1,5 @@
 # Logs
 *.log
 topic_services/logs/
+__pycache__/
+*.pyc
